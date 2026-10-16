@@ -790,4 +790,147 @@ void main() {
     expect(copy.projectName, 'Proyecto Automatización SILM');
     expect(copy.pieceType, 'brazo_robotico_v3.stl');
   });
+
+  testWidgets('Verifica filtro por semestres académicos en el análisis de producción',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final printVm = PrintViewModel(AppDatabase());
+    final inventoryVm = InventoryViewModel(AppDatabase());
+    addTearDown(printVm.dispose);
+    addTearDown(inventoryVm.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: voxelTheme(),
+        home: AnalyticsScreen(
+          vm: printVm,
+          inventoryVm: inventoryVm,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('SEM. ACTUAL'), findsOneWidget);
+    expect(find.text('SEM. ANTERIOR'), findsOneWidget);
+    expect(find.text('HISTORIAL'), findsOneWidget);
+
+    // Conmutar a Semestre Anterior
+    await tester.tap(find.text('SEM. ANTERIOR'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // Conmutar a Historial
+    await tester.tap(find.text('HISTORIAL'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // Conmutar a Semestre Actual
+    await tester.tap(find.text('SEM. ACTUAL'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'ExportScreen permite filtrar por semestres y en inventario por material y bajo stock',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final printVm = PrintViewModel(AppDatabase());
+    final inventoryVm = InventoryViewModel(AppDatabase());
+    addTearDown(printVm.dispose);
+    addTearDown(inventoryVm.dispose);
+
+    // Agregar items al inventario: uno con bajo stock y otro normal
+    inventoryVm.inventoryItems = [
+      InventoryItem(
+        id: 'item_1',
+        material: 'PLA',
+        color: 'Rojo',
+        stockActual: 100,
+        stockInicial: 1000, // 10% -> Bajo stock
+      ),
+      InventoryItem(
+        id: 'item_2',
+        material: 'PETG',
+        color: 'Azul',
+        stockActual: 800,
+        stockInicial: 1000, // 80% -> Normal
+      ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: voxelTheme(),
+        home: ExportScreen(
+          vm: printVm,
+          inventoryVm: inventoryVm,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 1. Verificar selector de periodos / semestres en pestaña Impresiones
+    expect(find.byType(DropdownButton<String>), findsOneWidget);
+    // Abrir dropdown de periodos
+    await tester.tap(find.byType(DropdownButton<String>));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Semestre Actual'), findsWidgets);
+    expect(find.textContaining('Semestre Anterior'), findsWidgets);
+
+    // Seleccionar Semestre Anterior
+    await tester.tap(find.textContaining('Semestre Anterior').last);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    // 2. Cambiar a la pestaña de Inventario
+    await tester.tap(find.textContaining('INVENTARIO'));
+    await tester.pumpAndSettle();
+
+    // Deben encontrarse los dropdowns de material y bajo stock
+    expect(find.text('Todos los materiales'), findsOneWidget);
+    expect(find.text('Todo el stock'), findsOneWidget);
+    expect(find.textContaining('PLA - Rojo'), findsOneWidget);
+    expect(find.textContaining('PETG - Azul'), findsOneWidget);
+
+    // Filtrar por Bajo stock
+    await tester.tap(find.text('Todo el stock'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bajo stock (≤ 20%)'), findsWidgets);
+
+    await tester.tap(find.text('Bajo stock (≤ 20%)').last);
+    await tester.pumpAndSettle();
+
+    // Solo debe mostrarse el item con bajo stock (PLA)
+    expect(find.textContaining('PLA - Rojo'), findsOneWidget);
+    expect(find.textContaining('PETG - Azul'), findsNothing);
+
+    // Filtrar por tipo de material: PETG
+    await tester.tap(find.text('Todos los materiales'));
+    await tester.pumpAndSettle();
+    expect(find.text('PETG'), findsWidgets);
+
+    await tester.tap(find.text('PETG').last);
+    await tester.pumpAndSettle();
+
+    // Ninguno cumple ambos criterios (PETG tiene stock normal)
+    expect(find.textContaining('No hay materiales en este filtro'), findsOneWidget);
+
+    // Cambiar filtro de stock de nuevo a 'Todo el stock'
+    await tester.tap(find.text('Bajo stock (≤ 20%)'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Todo el stock').last);
+    await tester.pumpAndSettle();
+
+    // Ahora sí se muestra PETG
+    expect(find.textContaining('PETG - Azul'), findsOneWidget);
+    expect(find.textContaining('PLA - Rojo'), findsNothing);
+  });
 }

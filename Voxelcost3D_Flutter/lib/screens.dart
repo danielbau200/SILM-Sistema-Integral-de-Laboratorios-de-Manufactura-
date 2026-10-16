@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:excel/excel.dart' as excel_pkg;
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
@@ -4978,14 +4979,176 @@ class AnalyticsScreen extends StatefulWidget {
   State<AnalyticsScreen> createState() => _AnalyticsState();
 }
 
+class AcademicSemesterInfo {
+  final String key;
+  final String label;
+  final String term;
+  final String shortTerm;
+  final int year;
+  final int semNum;
+  final DateTime startDate;
+  final DateTime endDate;
+  final bool isAll;
+
+  AcademicSemesterInfo({
+    required this.key,
+    required this.label,
+    required this.term,
+    required this.shortTerm,
+    required this.year,
+    required this.semNum,
+    required this.startDate,
+    required this.endDate,
+    this.isAll = false,
+  });
+
+  static AcademicSemesterInfo getCurrent([DateTime? date]) {
+    final now = date ?? DateTime.now();
+    final year = now.year;
+    final semNum = now.month >= 8 ? 2 : 1;
+    final term = semNum == 2 ? 'AGOSTO - DICIEMBRE $year' : 'ENERO - MAYO $year';
+    final shortTerm = semNum == 2 ? 'AGO-DIC $year' : 'ENE-MAY $year';
+    final start = semNum == 2 ? DateTime(year, 8, 1) : DateTime(year, 1, 1);
+    final end = semNum == 2
+        ? DateTime(year, 12, 31, 23, 59, 59)
+        : DateTime(year, 7, 31, 23, 59, 59);
+
+    return AcademicSemesterInfo(
+      key: 'ACTUAL',
+      label: 'Semestre Actual',
+      term: term,
+      shortTerm: shortTerm,
+      year: year,
+      semNum: semNum,
+      startDate: start,
+      endDate: end,
+    );
+  }
+
+  static AcademicSemesterInfo getPrevious([DateTime? date]) {
+    final now = date ?? DateTime.now();
+    final curSem = now.month >= 8 ? 2 : 1;
+    final year = curSem == 1 ? now.year - 1 : now.year;
+    final semNum = curSem == 1 ? 2 : 1;
+    final term = semNum == 2 ? 'AGOSTO - DICIEMBRE $year' : 'ENERO - MAYO $year';
+    final shortTerm = semNum == 2 ? 'AGO-DIC $year' : 'ENE-MAY $year';
+    final start = semNum == 2 ? DateTime(year, 8, 1) : DateTime(year, 1, 1);
+    final end = semNum == 2
+        ? DateTime(year, 12, 31, 23, 59, 59)
+        : DateTime(year, 7, 31, 23, 59, 59);
+
+    return AcademicSemesterInfo(
+      key: 'ANTERIOR',
+      label: 'Semestre Anterior',
+      term: term,
+      shortTerm: shortTerm,
+      year: year,
+      semNum: semNum,
+      startDate: start,
+      endDate: end,
+    );
+  }
+
+  static AcademicSemesterInfo getAll() {
+    return AcademicSemesterInfo(
+      key: 'TODOS',
+      label: 'Historial Semestral',
+      term: 'HISTORIAL DE TODOS LOS SEMESTRES',
+      shortTerm: 'HISTORIAL',
+      year: 0,
+      semNum: 0,
+      startDate: DateTime(2020, 1, 1),
+      endDate: DateTime(2100, 12, 31),
+      isAll: true,
+    );
+  }
+
+  static AcademicSemesterInfo getSpecific(int year, int semNum) {
+    final term = semNum == 2 ? 'AGOSTO - DICIEMBRE $year' : 'ENERO - MAYO $year';
+    final shortTerm = semNum == 2 ? 'AGO-DIC $year' : 'ENE-MAY $year';
+    final start = semNum == 2 ? DateTime(year, 8, 1) : DateTime(year, 1, 1);
+    final end = semNum == 2
+        ? DateTime(year, 12, 31, 23, 59, 59)
+        : DateTime(year, 7, 31, 23, 59, 59);
+
+    return AcademicSemesterInfo(
+      key: 'SEM_${year}_$semNum',
+      label: term,
+      term: term,
+      shortTerm: shortTerm,
+      year: year,
+      semNum: semNum,
+      startDate: start,
+      endDate: end,
+    );
+  }
+
+  static AcademicSemesterInfo getActive(String selectedPeriod, [DateTime? date]) {
+    final now = date ?? DateTime.now();
+    if (selectedPeriod == 'ACTUAL' || selectedPeriod == '6M') {
+      return getCurrent(now);
+    } else if (selectedPeriod == 'ANTERIOR') {
+      return getPrevious(now);
+    } else if (selectedPeriod == 'TODOS' ||
+        selectedPeriod == 'TODO' ||
+        selectedPeriod == 'AÑO' ||
+        selectedPeriod == '3M') {
+      return getAll();
+    } else if (selectedPeriod.startsWith('SEM_')) {
+      final parts = selectedPeriod.split('_');
+      if (parts.length == 3) {
+        final y = int.tryParse(parts[1]) ?? now.year;
+        final s = int.tryParse(parts[2]) ?? 1;
+        return getSpecific(y, s);
+      }
+    }
+    return getCurrent(now);
+  }
+
+  static List<AcademicSemesterInfo> getAvailable(Iterable<PrintRecord> records, [DateTime? date]) {
+    final now = date ?? DateTime.now();
+    final current = getCurrent(now);
+    final previous = getPrevious(now);
+
+    final map = <String, AcademicSemesterInfo>{};
+    map['${current.year}_${current.semNum}'] =
+        getSpecific(current.year, current.semNum);
+    map['${previous.year}_${previous.semNum}'] =
+        getSpecific(previous.year, previous.semNum);
+
+    // Escanear registros para identificar todos los semestres con actividad
+    for (final r in records) {
+      final d = DateTime.fromMillisecondsSinceEpoch(r.date);
+      final semNum = d.month >= 8 ? 2 : 1;
+      final key = '${d.year}_$semNum';
+      map.putIfAbsent(key, () => getSpecific(d.year, semNum));
+    }
+
+    // Incluir al menos 3 años hacia atrás para navegación completa
+    for (int y = now.year - 3; y <= now.year; y++) {
+      map.putIfAbsent('${y}_1', () => getSpecific(y, 1));
+      map.putIfAbsent('${y}_2', () => getSpecific(y, 2));
+    }
+
+    final list = map.values.toList();
+    list.sort((a, b) {
+      if (a.year != b.year) return b.year.compareTo(a.year);
+      return b.semNum.compareTo(a.semNum);
+    });
+    return list;
+  }
+}
+
 class _AnalyticsState extends State<AnalyticsScreen> {
   late final PrintViewModel vm;
   bool _ownsVm = false;
 
-  String _selectedPeriod = '6M'; // '3M', '6M', 'AÑO', 'TODO'
+  String _selectedPeriod = 'ACTUAL'; // 'ACTUAL', 'ANTERIOR', 'TODOS', o 'SEM_2026_2'
   String? _selectedMonthKey; // ej. '2026-AGO'
   int _metricIndex = 0; // 0 = Gramos, 1 = Piezas
   int? _hoveredBarIndex;
+
+  bool get _isDarkMode => isVoxelDarkMode;
 
   @override
   void initState() {
@@ -5004,57 +5167,77 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     super.dispose();
   }
 
+  AcademicSemesterInfo _getCurrentSemester(DateTime now) =>
+      AcademicSemesterInfo.getCurrent(now);
+
+  AcademicSemesterInfo _getPreviousSemester(DateTime now) =>
+      AcademicSemesterInfo.getPrevious(now);
+
+  AcademicSemesterInfo _getAllSemestersInfo() =>
+      AcademicSemesterInfo.getAll();
+
+  AcademicSemesterInfo _getSpecificSemester(int year, int semNum) =>
+      AcademicSemesterInfo.getSpecific(year, semNum);
+
+  AcademicSemesterInfo _getActiveSemesterInfo() =>
+      AcademicSemesterInfo.getActive(_selectedPeriod);
+
+  List<AcademicSemesterInfo> _getAvailableSemesters() =>
+      AcademicSemesterInfo.getAvailable(vm.allRecords);
+
   List<PrintRecord> _getFilteredRecords() {
     final all = vm.allRecords;
     if (all.isEmpty) return [];
-    final now = DateTime.now();
 
-    switch (_selectedPeriod) {
-      case '3M':
-        final threshold =
-            DateTime(now.year, now.month - 2, 1).millisecondsSinceEpoch;
-        return all.where((r) => r.date >= threshold).toList();
-      case '6M':
-        final threshold =
-            DateTime(now.year, now.month - 5, 1).millisecondsSinceEpoch;
-        return all.where((r) => r.date >= threshold).toList();
-      case 'AÑO':
-        final threshold = DateTime(now.year, 1, 1).millisecondsSinceEpoch;
-        return all.where((r) => r.date >= threshold).toList();
-      case 'TODO':
-      default:
-        return all;
+    final activeSem = _getActiveSemesterInfo();
+    if (activeSem.isAll) {
+      return all;
     }
+
+    final startMs = activeSem.startDate.millisecondsSinceEpoch;
+    final endMs = activeSem.endDate.millisecondsSinceEpoch;
+
+    return all.where((r) => r.date >= startMs && r.date <= endMs).toList();
   }
 
-  List<_MonthlyDataPoint> _getMonthlyPoints(List<PrintRecord> records) {
-    final now = DateTime.now();
+  List<_MonthlyDataPoint> _getMonthlyPoints(
+    List<PrintRecord> records,
+    AcademicSemesterInfo activeSem,
+  ) {
     DateTime start;
-    DateTime end = DateTime(now.year, now.month, 1);
+    DateTime end;
 
-    if (records.isEmpty) {
-      start = DateTime(now.year, now.month - 5, 1);
+    if (activeSem.isAll) {
+      if (records.isEmpty) {
+        final now = DateTime.now();
+        start = DateTime(now.year, now.month - 5, 1);
+        end = DateTime(now.year, now.month, 1);
+      } else {
+        final sortedDates = records
+            .map((r) => DateTime.fromMillisecondsSinceEpoch(r.date))
+            .toList()
+          ..sort();
+        start = DateTime(sortedDates.first.year, sortedDates.first.month, 1);
+        end = DateTime(sortedDates.last.year, sortedDates.last.month, 1);
+        final monthDiff =
+            (end.year - start.year) * 12 + end.month - start.month;
+        if (monthDiff < 4) {
+          start = DateTime(end.year, end.month - 4, 1);
+        }
+      }
     } else {
-      final sortedDates = records
-          .map((r) => DateTime.fromMillisecondsSinceEpoch(r.date))
-          .toList()
-        ..sort();
-      final earliest = sortedDates.first;
-      final latest = sortedDates.last;
-      start = DateTime(earliest.year, earliest.month, 1);
-      final latestMonth = DateTime(latest.year, latest.month, 1);
-      if (latestMonth.isAfter(end)) end = latestMonth;
-
-      final monthDiff = (end.year - start.year) * 12 + end.month - start.month;
-      if (_selectedPeriod == '3M' && monthDiff < 2) {
-        start = DateTime(end.year, end.month - 2, 1);
-      } else if (_selectedPeriod == '6M' && monthDiff < 5) {
-        start = DateTime(end.year, end.month - 5, 1);
-      } else if (_selectedPeriod == 'AÑO') {
-        start = DateTime(now.year, 1, 1);
-        end = DateTime(now.year, 12, 1);
-      } else if (monthDiff < 5) {
-        start = DateTime(end.year, end.month - 5, 1);
+      if (activeSem.semNum == 2) {
+        // AGOSTO - DICIEMBRE
+        start = DateTime(activeSem.year, 8, 1);
+        end = DateTime(activeSem.year, 12, 1);
+      } else {
+        // ENERO - MAYO (se incluye JUN si existen registros)
+        start = DateTime(activeSem.year, 1, 1);
+        final hasJune = records.any((r) {
+          final m = DateTime.fromMillisecondsSinceEpoch(r.date).month;
+          return m >= 6;
+        });
+        end = DateTime(activeSem.year, hasJune ? 6 : 5, 1);
       }
     }
 
@@ -5107,8 +5290,9 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     return AnimatedBuilder(
       animation: Listenable.merge(listenables),
       builder: (_, __) {
+        final activeSem = _getActiveSemesterInfo();
         final periodRecords = _getFilteredRecords();
-        final monthlyPoints = _getMonthlyPoints(periodRecords);
+        final monthlyPoints = _getMonthlyPoints(periodRecords, activeSem);
 
         // Si hay un mes seleccionado, filtramos los datos de detalle
         final displayedRecords = _selectedMonthKey != null
@@ -5193,7 +5377,7 @@ class _AnalyticsState extends State<AnalyticsScreen> {
             onHoverEnter: widget.onHoverMenu,
             hideLeading: widget.isPinned,
             actions: [
-              // Selector de Periodo compacto y elegante
+              // Selector Semestral en el AppBar
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 10),
                 padding: const EdgeInsets.all(2),
@@ -5205,10 +5389,22 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _periodButton('3M', '3 Meses'),
-                    _periodButton('6M', '6 Meses'),
-                    _periodButton('AÑO', 'Este Año'),
-                    _periodButton('TODO', 'Histórico'),
+                    _periodButton(
+                      'ACTUAL',
+                      'SEM. ACTUAL',
+                      'Semestre Actual: ${_getCurrentSemester(DateTime.now()).term}',
+                    ),
+                    _periodButton(
+                      'ANTERIOR',
+                      'SEM. ANTERIOR',
+                      'Semestre Anterior: ${_getPreviousSemester(DateTime.now()).term}',
+                    ),
+                    _periodButton(
+                      'TODOS',
+                      'HISTORIAL',
+                      'Historial de todos los semestres',
+                    ),
+                    _semesterMenuButton(activeSem),
                   ],
                 ),
               ),
@@ -5234,9 +5430,9 @@ class _AnalyticsState extends State<AnalyticsScreen> {
           ),
           backgroundColor: bgBase,
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
             children: [
-              // 1. CARDS OPERATIVAS COMPACTAS
+              // 1. CARDS OPERATIVAS COMPACTAS (KPIs con estética dark + neon green)
               LayoutBuilder(
                 builder: (context, constraints) {
                   final columns = constraints.maxWidth >= 1060
@@ -5259,8 +5455,9 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                               '${(displayedGrams / 1000.0).toStringAsFixed(2)} kg',
                           subtitle:
                               '${spoolsUsed.toStringAsFixed(1)} carretes est.',
-                          icon: Icons.album_outlined,
-                          iconColor: accentPetrol,
+                          color: const Color(0xFF10B981),
+                          icon: Icons.scale_outlined,
+                          sparklinePattern: 0,
                         ),
                       ),
                       SizedBox(
@@ -5270,8 +5467,9 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                           value: '$displayedPieces piezas',
                           subtitle:
                               '${displayedRecords.length} trabajos/órdenes',
-                          icon: Icons.precision_manufacturing_outlined,
-                          iconColor: const Color(0xFF0071E3),
+                          color: const Color(0xFF0EA5E9),
+                          icon: Icons.view_in_ar_outlined,
+                          sparklinePattern: 1,
                         ),
                       ),
                       SizedBox(
@@ -5280,8 +5478,9 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                           title: 'MATERIAL MÁS USADO',
                           value: topMaterialStr,
                           subtitle: '${colorMap.length} colores aplicados',
-                          icon: Icons.star_rounded,
-                          iconColor: const Color(0xFFFF9500),
+                          color: const Color(0xFFF59E0B),
+                          icon: Icons.palette_outlined,
+                          sparklinePattern: 2,
                         ),
                       ),
                     ],
@@ -5290,27 +5489,30 @@ class _AnalyticsState extends State<AnalyticsScreen> {
               ),
 
               if (_selectedMonthKey != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0071E3).withValues(alpha: 0.1),
+                    color: const Color(0xFF10B981).withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: const Color(0xFF0071E3).withValues(alpha: 0.3),
+                      color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                      width: 0.8,
                     ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.filter_alt_outlined,
-                          size: 16, color: Color(0xFF0071E3)),
+                      const Icon(Icons.school_outlined,
+                          size: 14, color: Color(0xFF10B981)),
                       const SizedBox(width: 8),
                       Text(
-                        'Detalle mensual: $_selectedMonthKey',
-                        style: const TextStyle(
-                          color: Color(0xFF0071E3),
-                          fontSize: 12,
+                        'Semestre ${activeSem.shortTerm} · Detalle del mes: $_selectedMonthKey',
+                        style: TextStyle(
+                          color: _isDarkMode
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF059669),
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -5325,7 +5527,7 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                'Quitar filtro',
+                                'Quitar filtro de mes',
                                 style: TextStyle(
                                   color: textSecondary,
                                   fontSize: 11,
@@ -5333,7 +5535,8 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              Icon(Icons.close, size: 14, color: textSecondary),
+                              Icon(Icons.close_rounded,
+                                  size: 13, color: textSecondary),
                             ],
                           ),
                         ),
@@ -5343,17 +5546,25 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                 ),
               ],
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
 
-              // 2. SECCIÓN PRINCIPAL: GRÁFICA INTELIGENTE + CATEGORÍAS
+              // 2. SECCIÓN PRINCIPAL: GRÁFICA ONDA NEÓN (General Sale Activity) + CATEGORÍAS (Top Selling Products)
               LayoutBuilder(
                 builder: (context, constraints) {
                   final isSingleColumn = constraints.maxWidth < 950;
                   if (isSingleColumn) {
                     return Column(
                       children: [
-                        _buildEvolutionCard(monthlyPoints),
-                        const SizedBox(height: 16),
+                        _buildEvolutionCard(
+                          points: monthlyPoints,
+                          displayedGrams: displayedGrams,
+                          displayedPieces: displayedPieces,
+                          recordCount: displayedRecords.length,
+                          topMaterialStr: topMaterialStr,
+                          spoolsUsed: spoolsUsed,
+                          activeSem: activeSem,
+                        ),
+                        const SizedBox(height: 14),
                         _buildCategoryCard(categoryMap, displayedGrams),
                       ],
                     );
@@ -5363,7 +5574,15 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Expanded(
-                          child: _buildEvolutionCard(monthlyPoints),
+                          child: _buildEvolutionCard(
+                            points: monthlyPoints,
+                            displayedGrams: displayedGrams,
+                            displayedPieces: displayedPieces,
+                            recordCount: displayedRecords.length,
+                            topMaterialStr: topMaterialStr,
+                            spoolsUsed: spoolsUsed,
+                            activeSem: activeSem,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -5379,9 +5598,9 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                 },
               ),
 
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
 
-              // 3. SECCIÓN SECUNDARIA: TOP PIEZAS + DESGLOSE CROMÁTICO
+              // 3. SECCIÓN SECUNDARIA: TOP TRANSACCIONES + CUSTOMER INTEREST
               LayoutBuilder(
                 builder: (context, constraints) {
                   final isSingleColumn = constraints.maxWidth < 950;
@@ -5389,7 +5608,7 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                     return Column(
                       children: [
                         _buildTopPiecesCard(topPieces, displayedGrams),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
                         _buildMaterialAndColorCard(
                           materialMap,
                           colorMap,
@@ -5432,9 +5651,11 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     );
   }
 
-  // --- BOTÓN DE PERIODO EN APP BAR ---
-  Widget _periodButton(String code, String tooltip) {
+  // --- BOTONES DE SEMESTRE EN APP BAR ---
+  Widget _periodButton(String code, String label, String tooltip) {
     final isSelected = _selectedPeriod == code;
+    final activeTextColor =
+        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
     return Tooltip(
       message: tooltip,
       child: InkWell(
@@ -5445,26 +5666,26 @@ class _AnalyticsState extends State<AnalyticsScreen> {
         borderRadius: BorderRadius.circular(6),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
           decoration: BoxDecoration(
-            color: isSelected ? surfaceCard : Colors.transparent,
+            color: isSelected
+                ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(6),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
-                    )
-                  ]
-                : null,
+            border: isSelected
+                ? Border.all(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                    width: 0.8,
+                  )
+                : Border.all(color: Colors.transparent, width: 0.8),
           ),
           child: Text(
-            code,
+            label,
             style: TextStyle(
-              color: isSelected ? textPrimary : textSecondary,
-              fontSize: 11,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+              color: isSelected ? activeTextColor : textSecondary,
+              fontSize: 10,
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+              letterSpacing: 0.3,
             ),
           ),
         ),
@@ -5472,29 +5693,304 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     );
   }
 
-  // --- TARJETA DE KPI ---
+  Widget _semesterMenuButton(AcademicSemesterInfo activeSem) {
+    final isCustom = _selectedPeriod.startsWith('SEM_');
+    return PopupMenuButton<String>(
+      tooltip: 'Seleccionar otro semestre universitario',
+      color: surfaceCard,
+      elevation: 10,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: borderSubtle),
+      ),
+      offset: const Offset(0, 36),
+      onSelected: (val) {
+        setState(() {
+          _selectedPeriod = val;
+          _selectedMonthKey = null;
+        });
+      },
+      itemBuilder: (context) => _buildSemesterMenuItems(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        decoration: BoxDecoration(
+          color: isCustom
+              ? const Color(0xFF10B981).withValues(alpha: 0.12)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: isCustom
+              ? Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.5),
+                  width: 0.8,
+                )
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.calendar_month_outlined,
+              size: 13,
+              color: isCustom ? const Color(0xFF10B981) : textSecondary,
+            ),
+            const SizedBox(width: 2),
+            Icon(
+              Icons.arrow_drop_down,
+              size: 14,
+              color: isCustom ? const Color(0xFF10B981) : textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _semesterDropdownButton(AcademicSemesterInfo activeSem) {
+    final activeColor =
+        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
+    return PopupMenuButton<String>(
+      tooltip: 'Cambiar semestre universitario',
+      color: surfaceCard,
+      elevation: 10,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: borderSubtle),
+      ),
+      offset: const Offset(0, 34),
+      onSelected: (val) {
+        setState(() {
+          _selectedPeriod = val;
+          _selectedMonthKey = null;
+        });
+      },
+      itemBuilder: (context) => _buildSemesterMenuItems(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: surfaceElevated,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: const Color(0xFF10B981).withValues(alpha: 0.3),
+            width: 0.8,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.school_outlined,
+              size: 12,
+              color: activeColor,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              activeSem.shortTerm,
+              style: TextStyle(
+                color: activeColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 13,
+              color: textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<PopupMenuEntry<String>> _buildSemesterMenuItems() {
+    final now = DateTime.now();
+    final current = _getCurrentSemester(now);
+    final previous = _getPreviousSemester(now);
+    final available = _getAvailableSemesters();
+
+    final items = <PopupMenuEntry<String>>[];
+
+    items.add(
+      PopupMenuItem<String>(
+        value: 'ACTUAL',
+        child: _buildSemesterMenuItem(
+          title: 'Semestre Actual',
+          subtitle: current.term,
+          isSelected: _selectedPeriod == 'ACTUAL',
+          icon: Icons.school_outlined,
+          color: const Color(0xFF10B981),
+        ),
+      ),
+    );
+
+    items.add(
+      PopupMenuItem<String>(
+        value: 'ANTERIOR',
+        child: _buildSemesterMenuItem(
+          title: 'Semestre Anterior',
+          subtitle: previous.term,
+          isSelected: _selectedPeriod == 'ANTERIOR',
+          icon: Icons.history_rounded,
+          color: const Color(0xFF0EA5E9),
+        ),
+      ),
+    );
+
+    items.add(
+      PopupMenuItem<String>(
+        value: 'TODOS',
+        child: _buildSemesterMenuItem(
+          title: 'Historial Semestral Completo',
+          subtitle: 'Todos los semestres registrados',
+          isSelected: _selectedPeriod == 'TODOS' || _selectedPeriod == 'TODO',
+          icon: Icons.auto_stories_outlined,
+          color: const Color(0xFFF59E0B),
+        ),
+      ),
+    );
+
+    items.add(
+      const PopupMenuDivider(height: 12),
+    );
+
+    for (final sem in available) {
+      items.add(
+        PopupMenuItem<String>(
+          value: sem.key,
+          child: _buildSemesterMenuItem(
+            title: sem.term,
+            subtitle: 'Periodo ${sem.shortTerm}',
+            isSelected: _selectedPeriod == sem.key,
+            icon: Icons.calendar_today_outlined,
+            color: sem.semNum == 2
+                ? const Color(0xFF10B981)
+                : const Color(0xFF0EA5E9),
+          ),
+        ),
+      );
+    }
+
+    return items;
+  }
+
+  Widget _buildSemesterMenuItem({
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+    required IconData icon,
+    required Color color,
+  }) {
+    final activeTextColor =
+        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(icon, size: 13, color: color),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: isSelected ? activeTextColor : textPrimary,
+                  fontSize: 11,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: textMuted,
+                  fontSize: 9,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (isSelected) ...[
+          const SizedBox(width: 6),
+          Icon(Icons.check_circle_rounded, size: 14, color: activeTextColor),
+        ],
+      ],
+    );
+  }
+
+  // --- BOTÓN TRES PUNTOS [...] ESTILO MINIMALISTA ---
+  Widget _moreOptionsButton() {
+    return Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: surfaceElevated,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: borderSubtle),
+      ),
+      child: Icon(
+        Icons.more_horiz_rounded,
+        size: 15,
+        color: textSecondary,
+      ),
+    );
+  }
+
+  // --- TARJETA DE KPI ESTILO MINIMALISTA ULTRA MODERNO ---
   Widget _kpiCard({
     required String title,
     required String value,
     String? subtitle,
+    required Color color,
     required IconData icon,
-    required Color iconColor,
+    required int sparklinePattern,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: surfaceCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: color.withValues(alpha: 0.2),
+                width: 0.8,
+              ),
+            ),
+            child: Icon(icon, size: 17, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -5502,56 +5998,98 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                     color: textSecondary,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.8,
+                    letterSpacing: 0.5,
                   ),
                 ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
                 ),
-                child: Icon(icon, size: 15, color: iconColor),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                ),
-              ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ],
+              ],
             ),
           ),
-          if (subtitle != null) ...[
-            const SizedBox(height: 3),
-            Text(
-              subtitle,
-              style: TextStyle(
-                color: textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+          const SizedBox(width: 8),
+          _buildMiniSparkline(color, sparklinePattern),
         ],
       ),
     );
   }
 
-  // --- TARJETA 1: EVOLUCIÓN TEMPORAL UNIFICADA ---
-  Widget _buildEvolutionCard(List<_MonthlyDataPoint> points) {
+  Widget _buildMiniSparkline(Color color, int pattern) {
+    const patterns = [
+      [0.35, 0.55, 0.40, 0.75, 0.60, 0.95, 0.70],
+      [0.30, 0.60, 0.45, 0.80, 0.65, 0.85, 1.00],
+      [0.40, 0.50, 0.65, 0.55, 0.75, 0.90, 0.85],
+    ];
+    final heights = patterns[pattern % patterns.length];
+
+    return SizedBox(
+      width: 38,
+      height: 28,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: heights.map((h) {
+          return Container(
+            width: 3.5,
+            height: 28 * h,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.25 + (h * 0.75)),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // --- TARJETA 1: TENDENCIA DE FABRICACIÓN (SPLINE DE ÁREA MINIMALISTA) ---
+  Widget _buildEvolutionCard({
+    required List<_MonthlyDataPoint> points,
+    required double displayedGrams,
+    required int displayedPieces,
+    required int recordCount,
+    required String topMaterialStr,
+    required double spoolsUsed,
+    required AcademicSemesterInfo activeSem,
+  }) {
     final values = _metricIndex == 0
         ? points.map((p) => p.grams).toList()
         : points.map((p) => p.pieces.toDouble()).toList();
@@ -5559,26 +6097,37 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     final maxVal =
         values.isEmpty ? 1.0 : values.reduce((a, b) => a > b ? a : b);
     final totalVal = values.fold(0.0, (s, v) => s + v);
-    final activeMonths = values.where((v) => v > 0).length;
-    final avgVal = activeMonths > 0 ? (totalVal / activeMonths) : 0.0;
+
+    int peakIndex = -1;
+    if (values.isNotEmpty && maxVal > 0) {
+      peakIndex = values.indexOf(maxVal);
+    }
 
     final unitLabel = _metricIndex == 0 ? 'g' : 'piezas';
-    final accent = _metricIndex == 0 ? chartPrimary : const Color(0xFF0071E3);
+    final actionColor =
+        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
 
     return Container(
       key: const ValueKey('analytics_evolution_card'),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: surfaceCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Cabecera con selector de métrica
+          // 1. Cabecera limpia
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Expanded(
                 child: Column(
@@ -5586,18 +6135,22 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                   children: [
                     Text(
                       'TENDENCIA DE FABRICACIÓN',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: textPrimary,
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
+                        letterSpacing: 0.5,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
-                      'Toca un mes para ver su detalle',
+                      activeSem.term,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: textMuted,
+                        color: textSecondary,
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
                       ),
@@ -5605,323 +6158,297 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                   ],
                 ),
               ),
-              // Selector Toggle Gramos / Piezas
-              Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: surfaceElevated,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: borderSubtle),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _metricToggleOption(
-                      title: 'Gramos',
-                      index: 0,
-                      icon: Icons.layers_outlined,
-                    ),
-                    _metricToggleOption(
-                      title: 'Piezas',
-                      index: 1,
-                      icon: Icons.view_in_ar_outlined,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-
-          // Badge con Promedio y Total + Indicador de Mes Filtrado
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'Total: ${totalVal.toStringAsFixed(_metricIndex == 0 ? 1 : 0)} $unitLabel',
-                  style: TextStyle(
-                    color: accent,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
               const SizedBox(width: 8),
-              Text(
-                '· Media activa: ${avgVal.toStringAsFixed(1)} $unitLabel/mes',
-                style: TextStyle(
-                  color: textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              if (_selectedMonthKey != null) ...[
-                const SizedBox(width: 10),
-                InkWell(
-                  onTap: () => setState(() => _selectedMonthKey = null),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
-                      color: accentPetrol.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                          color: accentPetrol.withValues(alpha: 0.4)),
+                      color: surfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: borderSubtle),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          'Mes: $_selectedMonthKey',
-                          style: const TextStyle(
-                            color: accentPetrol,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        _metricToggleOption(
+                          title: 'Gramos',
+                          index: 0,
+                          icon: Icons.layers_outlined,
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.close, size: 12, color: accentPetrol),
+                        _metricToggleOption(
+                          title: 'Piezas',
+                          index: 1,
+                          icon: Icons.view_in_ar_outlined,
+                        ),
                       ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  _semesterDropdownButton(activeSem),
+                ],
+              ),
             ],
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
 
-          // Gráfica de Barras estilizada
+          // 2. Métrica de volumen y enlace al informe
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'VOLUMEN GENERADO',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${totalVal >= 1000 ? (totalVal / 1000).toStringAsFixed(2) : totalVal.toStringAsFixed(0)} $unitLabel',
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.6,
+                    ),
+                  ),
+                ],
+              ),
+              InkWell(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ExportScreen(
+                        vm: vm,
+                        inventoryVm: widget.inventoryVm,
+                      ),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(4),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Ver informe',
+                        style: TextStyle(
+                          color: actionColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        Icons.arrow_outward_rounded,
+                        size: 13,
+                        color: actionColor,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 8),
+
+          // 3. Gráfica Spline de Área Minimalista
           SizedBox(
-            height: 190,
+            height: 105,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Eje Y (Escala de valores)
+                // Eje Y sutil
                 SizedBox(
-                  width: 44,
+                  width: 32,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     crossAxisAlignment: CrossAxisAlignment.end,
-                    children: List.generate(5, (i) {
-                      final val = maxVal * (4 - i) / 4;
+                    children: List.generate(4, (i) {
+                      final val = maxVal * (3 - i) / 3;
                       return Text(
                         val >= 1000
-                            ? '${(val / 1000).toStringAsFixed(1)}k'
-                            : val.toStringAsFixed(val % 1 == 0 ? 0 : 1),
+                            ? '${(val / 1000).toStringAsFixed(0)}k'
+                            : val.toStringAsFixed(0),
                         style: TextStyle(
-                          color: textMuted,
-                          fontSize: 10,
+                          color: textSecondary,
+                          fontSize: 9,
                           fontWeight: FontWeight.w500,
                         ),
                       );
                     }),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
 
-                // Contenedor de Barras
+                // Contenedor de la Onda Spline y Meses interactivos
                 Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final count = points.isEmpty ? 1 : points.length;
-                      final barWidth = (constraints.maxWidth / count * 0.55)
-                          .clamp(24.0, 48.0);
-                      final chartH = constraints.maxHeight - 26;
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: LayoutBuilder(
+                          builder: (context, boxConstraints) {
+                            final w = boxConstraints.maxWidth;
+                            final h = boxConstraints.maxHeight;
 
-                      // Posición de la línea de promedio
-                      final avgRatio =
-                          maxVal > 0 ? (avgVal / maxVal).clamp(0.0, 1.0) : 0.0;
-                      final avgTop = chartH * (1.0 - avgRatio) + 4;
+                            double peakX = 0;
+                            double peakY = 0;
+                            if (peakIndex >= 0 &&
+                                points.isNotEmpty &&
+                                maxVal > 0) {
+                              final count = points.length;
+                              peakX = count <= 1
+                                  ? w / 2
+                                  : (peakIndex * (w / (count - 1)));
+                              peakY = h * 0.12;
+                            }
 
-                      return Stack(
-                        children: [
-                          // Líneas de fondo sutiles
-                          ...List.generate(5, (i) {
-                            final top = i * chartH / 4 + 4;
-                            return Positioned(
-                              left: 0,
-                              right: 0,
-                              top: top,
-                              child: Container(
-                                height: 1,
-                                color: borderSubtle,
-                              ),
-                            );
-                          }),
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Positioned.fill(
+                                  child: CustomPaint(
+                                    painter: _MinimalAreaChartPainter(
+                                      values: values,
+                                      maxVal: maxVal,
+                                      peakIndex: peakIndex,
+                                      isDark: _isDarkMode,
+                                    ),
+                                  ),
+                                ),
 
-                          // Línea guía de promedio mensual
-                          if (avgVal > 0)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              top: avgTop,
-                              child: Container(
-                                height: 1.2,
-                                color: accent.withValues(alpha: 0.35),
-                              ),
-                            ),
-
-                          // Barras interactivas
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4, bottom: 2),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: points.asMap().entries.map((e) {
-                                final idx = e.key;
-                                final point = e.value;
-                                final pointKey = '${point.year}-${point.label}';
-                                final isSelectedMonth =
-                                    _selectedMonthKey == pointKey;
-                                final val = _metricIndex == 0
-                                    ? point.grams
-                                    : point.pieces.toDouble();
-                                final isZero = val == 0;
-                                final ratio = isZero
-                                    ? 0.02
-                                    : (val / (maxVal == 0 ? 1 : maxVal))
-                                        .clamp(0.04, 1.0);
-                                final isHovered = _hoveredBarIndex == idx;
-
-                                return Expanded(
-                                  child: MouseRegion(
-                                    cursor: SystemMouseCursors.click,
-                                    onEnter: (_) =>
-                                        setState(() => _hoveredBarIndex = idx),
-                                    onExit: (_) =>
-                                        setState(() => _hoveredBarIndex = null),
-                                    child: GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: () {
-                                        setState(() {
-                                          if (_selectedMonthKey == pointKey) {
-                                            _selectedMonthKey = null;
-                                          } else {
-                                            _selectedMonthKey = pointKey;
-                                          }
-                                        });
-                                      },
-                                      child: Tooltip(
-                                        waitDuration:
-                                            const Duration(milliseconds: 100),
-                                        message:
-                                            '${point.label} ${point.year}\n• ${point.grams.toStringAsFixed(1)} g\n• ${point.pieces} piezas\n(Clic para filtrar)',
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.end,
-                                          children: [
-                                            Expanded(
-                                              child: Align(
-                                                alignment:
-                                                    Alignment.bottomCenter,
-                                                child: AnimatedContainer(
-                                                  duration: const Duration(
-                                                      milliseconds: 150),
-                                                  width: barWidth,
-                                                  height: chartH * ratio,
-                                                  decoration: BoxDecoration(
-                                                    color: isZero
-                                                        ? borderSubtle
-                                                            .withValues(
-                                                                alpha: 0.5)
-                                                        : (isSelectedMonth
-                                                            ? const Color(
-                                                                0xFF0071E3)
-                                                            : (isHovered
-                                                                ? accentPetrolHover
-                                                                : accent)),
-                                                    borderRadius:
-                                                        const BorderRadius
-                                                            .vertical(
-                                                      top: Radius.circular(5),
-                                                    ),
-                                                    border: isSelectedMonth
-                                                        ? Border.all(
-                                                            color: Colors.white
-                                                                .withValues(
-                                                                    alpha: 0.9),
-                                                            width: 1.5,
-                                                          )
-                                                        : null,
-                                                    boxShadow: (isHovered ||
-                                                                isSelectedMonth) &&
-                                                            !isZero
-                                                        ? [
-                                                            BoxShadow(
-                                                              color: (isSelectedMonth
-                                                                      ? const Color(
-                                                                          0xFF0071E3)
-                                                                      : accent)
-                                                                  .withValues(
-                                                                      alpha:
-                                                                          0.4),
-                                                              blurRadius: 8,
-                                                              offset:
-                                                                  const Offset(
-                                                                      0, -2),
-                                                            )
-                                                          ]
-                                                        : null,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 8),
-                                            Container(
-                                              padding: isSelectedMonth
-                                                  ? const EdgeInsets.symmetric(
-                                                      horizontal: 5,
-                                                      vertical: 1)
-                                                  : EdgeInsets.zero,
-                                              decoration: isSelectedMonth
-                                                  ? BoxDecoration(
-                                                      color: const Color(
-                                                              0xFF0071E3)
-                                                          .withValues(
-                                                              alpha: 0.15),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              4),
-                                                    )
-                                                  : null,
-                                              child: Text(
-                                                point.label,
-                                                style: TextStyle(
-                                                  color: isSelectedMonth
-                                                      ? const Color(0xFF0071E3)
-                                                      : (isHovered
-                                                          ? textPrimary
-                                                          : (isZero
-                                                              ? textMuted
-                                                              : textSecondary)),
-                                                  fontSize: 10,
-                                                  fontWeight: (isHovered ||
-                                                          isSelectedMonth)
-                                                      ? FontWeight.w800
-                                                      : FontWeight.w600,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
+                                // Badge flotante en el pico
+                                if (peakIndex >= 0 && maxVal > 0)
+                                  Positioned(
+                                    left: (peakX - 26).clamp(0.0, w - 52),
+                                    top: (peakY - 18).clamp(0.0, h),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF59E0B),
+                                        borderRadius: BorderRadius.circular(4),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFF59E0B)
+                                                .withValues(alpha: 0.35),
+                                            blurRadius: 6,
+                                          )
+                                        ],
+                                      ),
+                                      child: Text(
+                                        maxVal >= 1000
+                                            ? '${(maxVal / 1000).toStringAsFixed(1)}k $unitLabel'
+                                            : '${maxVal.toStringAsFixed(0)} $unitLabel',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w800,
                                         ),
                                       ),
                                     ),
                                   ),
-                                );
-                              }).toList(),
+
+                                // Detector de clics en la gráfica
+                                Positioned.fill(
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: points.map((p) {
+                                      final pointKey = '${p.year}-${p.label}';
+                                      return Expanded(
+                                        child: InkWell(
+                                          onTap: () {
+                                            setState(() {
+                                              if (_selectedMonthKey ==
+                                                  pointKey) {
+                                                _selectedMonthKey = null;
+                                              } else {
+                                                _selectedMonthKey = pointKey;
+                                              }
+                                            });
+                                          },
+                                          hoverColor: const Color(0xFF10B981)
+                                              .withValues(alpha: 0.05),
+                                          child: const SizedBox.expand(),
+                                        ),
+                                      );
+                                    }).toList(),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Pills interactivos de meses en el eje X
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: points.map((p) {
+                          final pointKey = '${p.year}-${p.label}';
+                          final isSelected = _selectedMonthKey == pointKey;
+                          final activeColor = _isDarkMode
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFF059669);
+
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                if (_selectedMonthKey == pointKey) {
+                                  _selectedMonthKey = null;
+                                } else {
+                                  _selectedMonthKey = pointKey;
+                                }
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(4),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? const Color(0xFF10B981)
+                                        .withValues(alpha: 0.12)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(4),
+                                border: isSelected
+                                    ? Border.all(
+                                        color: const Color(0xFF10B981)
+                                            .withValues(alpha: 0.35),
+                                        width: 0.8,
+                                      )
+                                    : null,
+                              ),
+                              child: Text(
+                                p.label,
+                                style: TextStyle(
+                                  color:
+                                      isSelected ? activeColor : textSecondary,
+                                  fontSize: 9,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      );
-                    },
+                          );
+                        }).toList(),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -5938,22 +6465,30 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     required IconData icon,
   }) {
     final isSelected = _metricIndex == index;
+    final activeColor =
+        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
     return InkWell(
       onTap: () => setState(() => _metricIndex = index),
       borderRadius: BorderRadius.circular(6),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
           color: isSelected ? surfaceCard : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
+          border: isSelected
+              ? Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                  width: 0.8,
+                )
+              : null,
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 3,
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 4,
                     offset: const Offset(0, 1),
-                  )
+                  ),
                 ]
               : null,
         ),
@@ -5962,10 +6497,10 @@ class _AnalyticsState extends State<AnalyticsScreen> {
           children: [
             Icon(
               icon,
-              size: 13,
-              color: isSelected ? accentPetrol : textSecondary,
+              size: 12,
+              color: isSelected ? activeColor : textSecondary,
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: 4),
             Text(
               title,
               style: TextStyle(
@@ -5980,7 +6515,7 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     );
   }
 
-  // --- TARJETA 2: DISTRIBUCIÓN POR CATEGORÍA ---
+  // --- TARJETA 2: CATEGORÍAS DE USO (MINIMALISTA CON BARRAS DE PROGRESO) ---
   Widget _buildCategoryCard(
     Map<String, double> categories,
     double totalGrams, {
@@ -5990,21 +6525,26 @@ class _AnalyticsState extends State<AnalyticsScreen> {
       ..sort((a, b) => b.value.compareTo(a.value));
 
     const categoryColors = [
-      Color(0xFF0066CC), // Petrol
-      Color(0xFF5856D6), // Indigo
-      Color(0xFF30B0C7), // Teal
-      Color(0xFFFF9500), // Amber
-      Color(0xFF34C759), // Green
-      Color(0xFFFF2D55), // Red
+      Color(0xFF10B981), // Emerald
+      Color(0xFF0EA5E9), // Cyan
+      Color(0xFFF59E0B), // Amber
+      Color(0xFF8B5CF6), // Violet
     ];
 
     return Container(
       key: const ValueKey('analytics_category_card'),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: surfaceCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6012,74 +6552,75 @@ class _AnalyticsState extends State<AnalyticsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'CATEGORÍAS DE USO',
-                style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: surfaceElevated,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: borderSubtle),
-                ),
+              Expanded(
                 child: Text(
-                  '${entries.length} tipos',
+                  'CATEGORÍAS DE USO',
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: textSecondary,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
+                    color: textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
                   ),
                 ),
               ),
+              const SizedBox(width: 8),
+              _moreOptionsButton(),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           if (entries.isEmpty)
             fillHeight
                 ? Expanded(
                     child: Center(
                       child: Text(
-                        'No hay categorías registradas',
-                        style: TextStyle(color: textSecondary, fontSize: 12),
+                        'Sin datos',
+                        style: TextStyle(color: textSecondary, fontSize: 11),
                       ),
                     ),
                   )
                 : Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    padding: const EdgeInsets.symmetric(vertical: 20),
                     child: Center(
                       child: Text(
-                        'No hay categorías registradas',
-                        style: TextStyle(color: textSecondary, fontSize: 12),
+                        'Sin datos',
+                        style: TextStyle(color: textSecondary, fontSize: 11),
                       ),
                     ),
                   )
           else
             Column(
-              children: entries.asMap().entries.map((e) {
-                final idx = e.key;
-                final entry = e.value;
+              children: entries.take(3).toList().asMap().entries.map((item) {
+                final idx = item.key;
+                final entry = item.value;
+                final color = categoryColors[idx % categoryColors.length];
                 final pct = totalGrams > 0 ? (entry.value / totalGrams) : 0.0;
-                final col = categoryColors[idx % categoryColors.length];
 
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: surfaceElevated,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: borderSubtle),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
                           Container(
-                            width: 8,
-                            height: 8,
+                            width: 28,
+                            height: 28,
                             decoration: BoxDecoration(
-                              color: col,
-                              shape: BoxShape.circle,
+                              color: color.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Icon(
+                              _categoryIcon(entry.key),
+                              size: 15,
+                              color: color,
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -6088,39 +6629,40 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                               entry.key,
                               style: TextStyle(
                                 color: textPrimary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          const SizedBox(width: 6),
                           Text(
                             '${entry.value.toStringAsFixed(1)} g',
                             style: TextStyle(
                               color: textPrimary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4),
                           Text(
                             '(${(pct * 100).toStringAsFixed(0)}%)',
                             style: TextStyle(
                               color: textSecondary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 6),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: BorderRadius.circular(2),
                         child: LinearProgressIndicator(
-                          value: pct.clamp(0.01, 1.0),
-                          minHeight: 5,
-                          backgroundColor: surfaceElevated,
-                          valueColor: AlwaysStoppedAnimation<Color>(col),
+                          value: pct.clamp(0.0, 1.0),
+                          minHeight: 4,
+                          backgroundColor: borderSubtle,
+                          valueColor: AlwaysStoppedAnimation<Color>(color),
                         ),
                       ),
                     ],
@@ -6133,21 +6675,43 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     );
   }
 
-  // --- TARJETA 3: TOP 5 PIEZAS CON MAYOR CONSUMO ---
+  IconData _categoryIcon(String name) {
+    final lower = name.toLowerCase();
+    if (lower.contains('arte') || lower.contains('decor')) {
+      return Icons.brush_rounded;
+    }
+    if (lower.contains('repuesto')) {
+      return Icons.build_rounded;
+    }
+    if (lower.contains('prototipo')) {
+      return Icons.biotech_rounded;
+    }
+    if (lower.contains('funcional')) {
+      return Icons.precision_manufacturing_rounded;
+    }
+    return Icons.widgets_rounded;
+  }
+
+  // --- TARJETA 3: IMPRESIONES CON MAYOR CONSUMO (TABLA MINIMALISTA) ---
   Widget _buildTopPiecesCard(
     List<_TopPieceStat> topPieces,
     double totalGrams, {
     bool fillHeight = false,
   }) {
-    final highestGrams = topPieces.isEmpty ? 1.0 : topPieces.first.totalGrams;
-
     return Container(
       key: const ValueKey('analytics_top_pieces_card'),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: surfaceCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6155,117 +6719,208 @@ class _AnalyticsState extends State<AnalyticsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'IMPRESIONES CON MAYOR CONSUMO',
-                style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+              Expanded(
+                child: Text(
+                  'IMPRESIONES CON MAYOR CONSUMO',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
-              const Icon(Icons.leaderboard_outlined,
-                  size: 16, color: accentPetrol),
+              const SizedBox(width: 8),
+              _moreOptionsButton(),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           if (topPieces.isEmpty)
             fillHeight
                 ? Expanded(
                     child: Center(
                       child: Text(
-                        'No hay piezas registradas en el periodo',
-                        style: TextStyle(color: textSecondary, fontSize: 12),
+                        'Sin datos',
+                        style: TextStyle(color: textSecondary, fontSize: 11),
                         textAlign: TextAlign.center,
                       ),
                     ),
                   )
                 : Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    padding: const EdgeInsets.symmetric(vertical: 20),
                     child: Center(
                       child: Text(
-                        'No hay piezas registradas en el periodo',
-                        style: TextStyle(color: textSecondary, fontSize: 12),
+                        'Sin datos',
+                        style: TextStyle(color: textSecondary, fontSize: 11),
                         textAlign: TextAlign.center,
                       ),
                     ),
                   )
-          else
+          else ...[
+            // Encabezados
+            Row(
+              children: [
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    'PIEZA',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'CANTIDAD',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'CONSUMO',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      'ESTADO',
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Divider(color: borderSubtle, height: 1),
+            const SizedBox(height: 6),
+
+            // Filas
             Column(
-              children: topPieces.asMap().entries.map((e) {
+              children: topPieces.take(4).toList().asMap().entries.map((e) {
                 final rank = e.key + 1;
                 final piece = e.value;
-                final ratio = highestGrams > 0
-                    ? (piece.totalGrams / highestGrams).clamp(0.01, 1.0)
-                    : 0.0;
+                final isEven = rank % 2 == 0;
 
-                final Color medalColor = rank == 1
-                    ? const Color(0xFFFF9500)
-                    : (rank == 2
-                        ? const Color(0xFF8E8E93)
-                        : (rank == 3 ? const Color(0xFFC97A3E) : textMuted));
+                final statusText = isEven ? 'En proceso' : 'Listo';
+                final statusColor = isEven
+                    ? const Color(0xFFF59E0B)
+                    : const Color(0xFF10B981);
 
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(vertical: 4.5),
                   child: Row(
                     children: [
-                      // Posición del ranking
-                      Container(
-                        width: 22,
-                        height: 22,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: rank <= 3
-                              ? medalColor.withValues(alpha: 0.15)
-                              : surfaceElevated,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          '$rank',
-                          style: TextStyle(
-                            color: rank <= 3 ? medalColor : textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // Nombre y detalles
+                      // Rank y nombre
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        flex: 4,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              '${piece.name} · ${piece.totalUnits} uds',
-                              style: TextStyle(
-                                color: textPrimary,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: surfaceElevated,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: borderSubtle),
                               ),
-                              overflow: TextOverflow.ellipsis,
+                              child: Text(
+                                '#0$rank',
+                                style: TextStyle(
+                                  color: textSecondary,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             ),
-                            const SizedBox(height: 6),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(3),
-                              child: LinearProgressIndicator(
-                                value: ratio,
-                                minHeight: 4,
-                                backgroundColor: surfaceElevated,
-                                valueColor: const AlwaysStoppedAnimation<Color>(
-                                    accentPetrol),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                piece.name,
+                                style: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      // Gramos acumulados
-                      Text(
-                        '${piece.totalGrams.toStringAsFixed(1)} g',
-                        style: TextStyle(
-                          color: textPrimary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                      // Cantidad
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          '${piece.totalUnits} uds',
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      // Consumo
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          '${piece.totalGrams.toStringAsFixed(1)} g',
+                          style: TextStyle(
+                            color: textPrimary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      // Estado
+                      Expanded(
+                        flex: 2,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: statusColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(
+                                color: statusColor.withValues(alpha: 0.3),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              statusText,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -6273,12 +6928,13 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                 );
               }).toList(),
             ),
+          ],
         ],
       ),
     );
   }
 
-  // --- TARJETA 4: MATERIALES Y COLORES DE FILAMENTO ---
+  // --- TARJETA 4: MATERIALES Y COLORES (BARRA SEGMENTADA Y PALETA REAL) ---
   Widget _buildMaterialAndColorCard(
     Map<String, double> materials,
     Map<String, double> colors,
@@ -6290,13 +6946,27 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     final colEntries = colors.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
+    const matColors = [
+      Color(0xFF10B981), // PLA - Cyber Emerald
+      Color(0xFF0EA5E9), // PETG - Cyber Cyan
+      Color(0xFFF59E0B), // ABS - Cyber Amber
+      Color(0xFF8B5CF6), // Otros - Cyber Violet
+    ];
+
     return Container(
       key: const ValueKey('analytics_material_color_card'),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: surfaceCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: borderSubtle),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6304,37 +6974,105 @@ class _AnalyticsState extends State<AnalyticsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'MATERIALES Y COLORES',
-                style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
+              Expanded(
+                child: Text(
+                  'MATERIALES Y COLORES',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
-              const Icon(Icons.palette_outlined, size: 16, color: accentAmber),
+              const SizedBox(width: 8),
+              _moreOptionsButton(),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
 
-          // 1. Tarjetas Compactas de Tipo de Material
+          // Barra de distribución de material (reemplaza el mapa roto)
+          if (matEntries.isNotEmpty && totalGrams > 0) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: SizedBox(
+                height: 7,
+                child: Row(
+                  children: matEntries.asMap().entries.map((item) {
+                    final idx = item.key;
+                    final entry = item.value;
+                    final color = matColors[idx % matColors.length];
+                    final flex = ((entry.value / totalGrams) * 1000).round();
+                    if (flex <= 0) return const SizedBox.shrink();
+                    return Expanded(
+                      flex: flex,
+                      child: Container(
+                        color: color,
+                        margin: const EdgeInsets.symmetric(horizontal: 0.5),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: matEntries.take(4).toList().asMap().entries.map((item) {
+                final idx = item.key;
+                final entry = item.value;
+                final color = matColors[idx % matColors.length];
+                final pct = (entry.value / totalGrams) * 100;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${entry.key} ${pct.toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          // 1. Tipos de filamento
           Text(
             'TIPOS DE FILAMENTO',
             style: TextStyle(
               color: textSecondary,
-              fontSize: 10,
+              fontSize: 9.5,
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
+              letterSpacing: 0.5,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
           if (matEntries.isEmpty)
             Text('Sin datos',
                 style: TextStyle(color: textSecondary, fontSize: 11))
           else
             Column(
-              children: matEntries.take(5).map((m) {
+              children:
+                  matEntries.take(3).toList().asMap().entries.map((item) {
+                final idx = item.key;
+                final m = item.value;
+                final color = matColors[idx % matColors.length];
                 final pct = totalGrams > 0 ? (m.value / totalGrams) : 0.0;
                 final stockGrams = inventoryItems
                     .where((i) =>
@@ -6343,160 +7081,156 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                     .fold(0.0, (s, i) => s + i.stockActual);
 
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  padding: const EdgeInsets.only(bottom: 5),
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: accentPetrol.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              m.key,
-                              style: const TextStyle(
-                                color: accentPetrol,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: color.withValues(alpha: 0.3),
+                            width: 0.8,
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${m.value.toStringAsFixed(1)} g',
-                            style: TextStyle(
-                              color: textPrimary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
+                        ),
+                        child: Text(
+                          m.key,
+                          style: TextStyle(
+                            color: color,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '(${(pct * 100).toStringAsFixed(0)}%)',
-                            style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const Spacer(),
-                          if (inventoryItems.isNotEmpty)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: stockGrams > 0
-                                    ? surfaceElevated
-                                    : semanticWarning.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
-                                  color: stockGrams > 0
-                                      ? borderSubtle
-                                      : semanticWarning.withValues(alpha: 0.3),
-                                ),
-                              ),
-                              child: Text(
-                                stockGrams > 0
-                                    ? 'Stock: ${stockGrams >= 1000 ? '${(stockGrams / 1000).toStringAsFixed(1)} kg' : '${stockGrams.toInt()} g'}'
-                                    : 'Sin stock',
-                                style: TextStyle(
-                                  color: stockGrams > 0
-                                      ? textSecondary
-                                      : semanticWarning,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
-                        child: LinearProgressIndicator(
-                          value: pct.clamp(0.01, 1.0),
-                          minHeight: 4,
-                          backgroundColor: surfaceElevated,
-                          valueColor:
-                              const AlwaysStoppedAnimation<Color>(accentPetrol),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${m.value.toStringAsFixed(1)} g',
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '(${(pct * 100).toStringAsFixed(0)}%)',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (inventoryItems.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: stockGrams > 0
+                                ? surfaceElevated
+                                : semanticWarning.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: stockGrams > 0
+                                  ? borderSubtle
+                                  : semanticWarning.withValues(alpha: 0.3),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            stockGrams > 0
+                                ? 'Stock: ${stockGrams >= 1000 ? '${(stockGrams / 1000).toStringAsFixed(1)} kg' : '${stockGrams.toInt()} g'}'
+                                : 'Sin stock',
+                            style: TextStyle(
+                              color: stockGrams > 0
+                                  ? textSecondary
+                                  : semanticWarning,
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 );
               }).toList(),
             ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 6),
           Divider(color: borderSubtle, height: 1),
-          const SizedBox(height: 14),
+          const SizedBox(height: 6),
 
-          // 2. Chips Cromáticos de Colores
+          // 2. Colores más utilizados
           Text(
             'COLORES MÁS UTILIZADOS',
             style: TextStyle(
               color: textSecondary,
-              fontSize: 10,
+              fontSize: 9.5,
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
+              letterSpacing: 0.5,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 5),
           if (colEntries.isEmpty)
             Text('Sin datos',
                 style: TextStyle(color: textSecondary, fontSize: 11))
           else
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: colEntries.map((c) {
+              spacing: 6,
+              runSpacing: 4,
+              children: colEntries.take(6).map((c) {
                 final colObj = findVoxelColor(name: c.key);
                 final pct = totalGrams > 0 ? (c.value / totalGrams) : 0.0;
 
                 return Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
                     color: surfaceElevated,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(5),
                     border: Border.all(color: borderSubtle),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      colorSwatchCircle(
-                        colObj.color,
-                        size: 11,
-                        isTransparent: colObj.isTransparent,
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: colObj.color,
+                          border: Border.all(
+                            color: borderStrong,
+                            width: 0.8,
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 5),
                       Text(
                         c.key,
                         style: TextStyle(
                           color: textPrimary,
-                          fontSize: 11,
+                          fontSize: 9.5,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 4),
                       Text(
                         '${c.value.toStringAsFixed(0)} g',
                         style: TextStyle(
                           color: textSecondary,
-                          fontSize: 10,
+                          fontSize: 8.5,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(width: 3),
+                      const SizedBox(width: 2),
                       Text(
                         '(${(pct * 100).toStringAsFixed(0)}%)',
                         style: TextStyle(
                           color: textMuted,
-                          fontSize: 10,
+                          fontSize: 8.5,
                         ),
                       ),
                     ],
@@ -6508,6 +7242,164 @@ class _AnalyticsState extends State<AnalyticsScreen> {
       ),
     );
   }
+}
+
+// ==========================================
+// PINTORES PERSONALIZADOS PARA EL DASHBOARD
+// ==========================================
+
+class _MinimalAreaChartPainter extends CustomPainter {
+  final List<double> values;
+  final double maxVal;
+  final int peakIndex;
+  final bool isDark;
+
+  _MinimalAreaChartPainter({
+    required this.values,
+    required this.maxVal,
+    required this.peakIndex,
+    required this.isDark,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+
+    final count = values.length;
+    final w = size.width;
+    final h = size.height;
+
+    // 1. Líneas de referencia horizontales sutiles (al 25%, 50%, 75%)
+    final gridPaint = Paint()
+      ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05)
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+
+    for (final fraction in [0.25, 0.5, 0.75]) {
+      final y = h * fraction;
+      _drawDashedLine(canvas, Offset(0, y), Offset(w, y), gridPaint, 4, 4);
+    }
+
+    // 2. Calcular posiciones de cada punto
+    final points = <Offset>[];
+    for (int i = 0; i < count; i++) {
+      final x = count <= 1 ? w / 2 : (i * (w / (count - 1)));
+      final val = values[i];
+      final ratio = maxVal > 0 ? (val / maxVal).clamp(0.06, 0.90) : 0.06;
+      final y = h - (ratio * (h - 12));
+      points.add(Offset(x, y));
+    }
+
+    if (points.length < 2) return;
+
+    // 3. Columna guía vertical discontinua en el pico
+    if (peakIndex >= 0 && peakIndex < points.length && maxVal > 0) {
+      final peakPoint = points[peakIndex];
+      final guidePaint = Paint()
+        ..color = const Color(0xFF10B981).withValues(alpha: 0.25)
+        ..strokeWidth = 1.0
+        ..style = PaintingStyle.stroke;
+      _drawDashedLine(
+        canvas,
+        Offset(peakPoint.dx, peakPoint.dy),
+        Offset(peakPoint.dx, h),
+        guidePaint,
+        3,
+        3,
+      );
+    }
+
+    // 4. Curva Bézier suave para la onda
+    final path = Path();
+    path.moveTo(points[0].dx, points[0].dy);
+
+    for (int i = 0; i < points.length - 1; i++) {
+      final p0 = points[i];
+      final p1 = points[i + 1];
+      final cx = (p0.dx + p1.dx) / 2;
+      path.cubicTo(cx, p0.dy, cx, p1.dy, p1.dx, p1.dy);
+    }
+
+    // 5. Relleno con degradado área bajo la curva
+    final fillPath = Path.from(path);
+    fillPath.lineTo(points.last.dx, h);
+    fillPath.lineTo(points.first.dx, h);
+    fillPath.close();
+
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          const Color(0xFF10B981).withValues(alpha: isDark ? 0.25 : 0.16),
+          const Color(0xFF10B981).withValues(alpha: 0.0),
+        ],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ).createShader(Rect.fromLTWH(0, 0, w, h));
+    canvas.drawPath(fillPath, fillPaint);
+
+    // 6. Resplandor sutil (stroke blur)
+    final glowPaint = Paint()
+      ..color = const Color(0xFF10B981).withValues(alpha: isDark ? 0.35 : 0.2)
+      ..strokeWidth = 4.0
+      ..style = PaintingStyle.stroke
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    canvas.drawPath(path, glowPaint);
+
+    // 7. Trazo principal de la curva
+    final strokePaint = Paint()
+      ..color = const Color(0xFF10B981)
+      ..strokeWidth = 2.2
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    canvas.drawPath(path, strokePaint);
+
+    // 8. Nodo en el pico
+    if (peakIndex >= 0 && peakIndex < points.length && maxVal > 0) {
+      final p = points[peakIndex];
+      // Halo exterior
+      canvas.drawCircle(
+        p,
+        6,
+        Paint()..color = const Color(0xFF10B981).withValues(alpha: 0.25),
+      );
+      // Círculo sólido
+      canvas.drawCircle(
+        p,
+        3.5,
+        Paint()..color = const Color(0xFF10B981),
+      );
+      // Centro blanco
+      canvas.drawCircle(
+        p,
+        1.5,
+        Paint()..color = Colors.white,
+      );
+    }
+  }
+
+  void _drawDashedLine(Canvas canvas, Offset p1, Offset p2, Paint paint,
+      double dashW, double dashSpace) {
+    final dx = p2.dx - p1.dx;
+    final dy = p2.dy - p1.dy;
+    final dist = math.sqrt(dx * dx + dy * dy);
+    if (dist <= 0) return;
+    final ux = dx / dist;
+    final uy = dy / dist;
+    double cur = 0;
+    while (cur < dist) {
+      final len = math.min(dashW, dist - cur);
+      canvas.drawLine(
+        Offset(p1.dx + ux * cur, p1.dy + uy * cur),
+        Offset(p1.dx + ux * (cur + len), p1.dy + uy * (cur + len)),
+        paint,
+      );
+      cur += dashW + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MinimalAreaChartPainter oldDelegate) => true;
 }
 
 class _MonthlyDataPoint {
@@ -6584,7 +7476,9 @@ class _ExportState extends State<ExportScreen> {
   final selectedInventory = <String>{};
   late final InventoryViewModel inventory;
   bool _ownsInventory = false;
-  String period = 'ESTE MES';
+  String period = 'ACTUAL';
+  String inventoryMaterialFilter = 'TODOS';
+  String inventoryStockFilter = 'TODOS'; // 'TODOS', 'BAJO', 'AGOTADO', 'OPTIMO'
   String searchQuery = '';
   final TextEditingController _searchCtrl = TextEditingController();
 
@@ -6631,8 +7525,8 @@ class _ExportState extends State<ExportScreen> {
       _ownsInventory = true;
     }
     inventory.addListener(_refresh);
-    selectedPrint.addAll(widget.vm.allRecords.map((r) => r.id));
-    selectedInventory.addAll(inventory.inventoryItems.map((i) => i.id));
+    selectedPrint.addAll(_filteredPrints.map((r) => r.id));
+    selectedInventory.addAll(_filteredInventory.map((i) => i.id));
   }
 
   void _refresh() {
@@ -6645,6 +7539,44 @@ class _ExportState extends State<ExportScreen> {
     inventory.removeListener(_refresh);
     if (_ownsInventory) inventory.dispose();
     super.dispose();
+  }
+
+  List<String> get _availableMaterials {
+    final set = <String>{};
+    for (final item in inventory.inventoryItems) {
+      final m = item.material.trim();
+      if (m.isNotEmpty) {
+        set.add(m.toUpperCase());
+      }
+    }
+    final list = set.toList()..sort();
+    return ['TODOS', ...list];
+  }
+
+  String _getPeriodLabel() {
+    final now = DateTime.now();
+    switch (period) {
+      case 'HOY':
+        return 'Hoy';
+      case '7 DÍAS':
+        return 'Últimos 7 días';
+      case 'ESTE MES':
+        return 'Este mes';
+      case 'TODOS':
+        return 'Histórico completo';
+      case 'ACTUAL':
+        final s = AcademicSemesterInfo.getCurrent(now);
+        return 'Semestre Actual (${s.term})';
+      case 'ANTERIOR':
+        final s = AcademicSemesterInfo.getPrevious(now);
+        return 'Semestre Anterior (${s.term})';
+      default:
+        if (period.startsWith('SEM_')) {
+          final s = AcademicSemesterInfo.getActive(period, now);
+          return s.term;
+        }
+        return period;
+    }
   }
 
   List<PrintRecord> get _filteredPrints {
@@ -6677,19 +7609,44 @@ class _ExportState extends State<ExportScreen> {
       } else if (period == 'ESTE MES') {
         final startOfMonth = DateTime(now.year, now.month, 1);
         return d.isAfter(startOfMonth.subtract(const Duration(seconds: 1)));
+      } else if (period == 'ACTUAL' ||
+          period == 'ANTERIOR' ||
+          period.startsWith('SEM_')) {
+        final sem = AcademicSemesterInfo.getActive(period, now);
+        return r.date >= sem.startDate.millisecondsSinceEpoch &&
+            r.date <= sem.endDate.millisecondsSinceEpoch;
       }
       return true; // 'TODOS'
     }).toList();
   }
 
   List<InventoryItem> get _filteredInventory {
-    if (searchQuery.trim().isEmpty) return inventory.inventoryItems;
-    final q = searchQuery.toLowerCase().trim();
     return inventory.inventoryItems.where((item) {
-      return item.material.toLowerCase().contains(q) ||
-          item.color.toLowerCase().contains(q) ||
-          item.brand.toLowerCase().contains(q) ||
-          (item.location ?? '').toLowerCase().contains(q);
+      if (searchQuery.trim().isNotEmpty) {
+        final q = searchQuery.toLowerCase().trim();
+        final matches = item.material.toLowerCase().contains(q) ||
+            item.color.toLowerCase().contains(q) ||
+            item.brand.toLowerCase().contains(q) ||
+            (item.location ?? '').toLowerCase().contains(q);
+        if (!matches) return false;
+      }
+
+      if (inventoryMaterialFilter != 'TODOS') {
+        if (item.material.trim().toUpperCase() !=
+            inventoryMaterialFilter.trim().toUpperCase()) {
+          return false;
+        }
+      }
+
+      if (inventoryStockFilter == 'BAJO') {
+        if (!item.isLowStock) return false;
+      } else if (inventoryStockFilter == 'AGOTADO') {
+        if (!item.isDepleted && item.stockActual > 0.001) return false;
+      } else if (inventoryStockFilter == 'OPTIMO') {
+        if (item.isLowStock) return false;
+      }
+
+      return true;
     }).toList();
   }
 
@@ -6899,14 +7856,21 @@ class _ExportState extends State<ExportScreen> {
     String title,
   ) async {
     excel_pkg.Excel excel;
-    String sheetName = 'Agosto- Diciembre 2026';
+    final now = DateTime.now();
+    String sheetName = 'Agosto - Diciembre 2026';
+    if (period == 'ACTUAL' || period == 'ANTERIOR' || period.startsWith('SEM_')) {
+      sheetName = AcademicSemesterInfo.getActive(period, now).term;
+    }
 
     try {
       final templateData = await rootBundle.load('assets/cmi_template.xlsx');
       final templateBytes = templateData.buffer.asUint8List();
       excel = excel_pkg.Excel.decodeBytes(templateBytes);
       if (excel.tables.isNotEmpty) {
-        sheetName = excel.tables.keys.first;
+        final origSheet = excel.tables.keys.first;
+        if (origSheet != sheetName) {
+          excel.rename(origSheet, sheetName);
+        }
       }
     } catch (_) {
       excel = excel_pkg.Excel.createExcel();
@@ -7133,9 +8097,24 @@ class _ExportState extends State<ExportScreen> {
 
   Future<void> _saveInventoryPdf(List<List<String>> rows) async {
     final pdf = pw.Document();
+    final filtersUsed = <String>[];
+    if (inventoryMaterialFilter != 'TODOS') {
+      filtersUsed.add('Material: $inventoryMaterialFilter');
+    }
+    if (inventoryStockFilter == 'BAJO') {
+      filtersUsed.add('Filtro: Bajo Stock (≤ 20%)');
+    } else if (inventoryStockFilter == 'AGOTADO') {
+      filtersUsed.add('Filtro: Agotados (0 g)');
+    } else if (inventoryStockFilter == 'OPTIMO') {
+      filtersUsed.add('Filtro: Stock Disponible (> 20%)');
+    }
+    final filterText =
+        filtersUsed.isNotEmpty ? ' · ${filtersUsed.join(' · ')}' : '';
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(24),
         build: (pw.Context context) => [
           pw.Text(
             'VOXELCOST3D - INVENTARIO DE MATERIALES',
@@ -7144,12 +8123,25 @@ class _ExportState extends State<ExportScreen> {
               fontWeight: pw.FontWeight.bold,
             ),
           ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'Generado el ${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year} · Total registros: ${rows.length}$filterText',
+            style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
+          ),
           pw.SizedBox(height: 16),
           pw.TableHelper.fromTextArray(
-            headers: ['MATERIAL', 'STOCK ACTUAL', 'STOCK INICIAL'],
+            headers: [
+              'MATERIAL / COLOR',
+              'MARCA',
+              'STOCK ACTUAL',
+              'STOCK INICIAL',
+              'ESTADO'
+            ],
             data: rows,
             border: null,
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            headerStyle:
+                pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
+            cellStyle: const pw.TextStyle(fontSize: 9),
             cellAlignment: pw.Alignment.centerLeft,
             headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
           ),
@@ -7166,7 +8158,13 @@ class _ExportState extends State<ExportScreen> {
   Future<void> _saveInventoryExcel(List<List<String>> rows) async {
     final excel = excel_pkg.Excel.createExcel();
     final sheet = excel['Inventario'];
-    sheet.appendRow(_toExcelRow(['PRODUCTO', 'STOCK ACTUAL', 'STOCK INICIAL']));
+    sheet.appendRow(_toExcelRow([
+      'PRODUCTO / COLOR',
+      'MARCA',
+      'STOCK ACTUAL',
+      'STOCK INICIAL',
+      'ESTADO'
+    ]));
     for (final row in rows) {
       sheet.appendRow(_toExcelRow(row));
     }
@@ -7197,20 +8195,28 @@ class _ExportState extends State<ExportScreen> {
     try {
       if (tab == 0) {
         final rows = _buildSummaryRows(_availablePrints);
+        final pLabel = _getPeriodLabel();
         if (format == 'PDF') {
           await _savePdf(rows, _availablePrints,
-              'VOXELCOST3D - REPORTE DE PRODUCCIÓN (${period.toUpperCase()})');
+              'VOXELCOST3D - REPORTE DE PRODUCCIÓN ($pLabel)');
         } else {
           await _saveExcel(rows, _availablePrints,
-              'VOXELCOST3D - REPORTE DE PRODUCCIÓN (${period.toUpperCase()})');
+              'VOXELCOST3D - REPORTE DE PRODUCCIÓN ($pLabel)');
         }
       } else {
         final rows = _availableInventory
-            .map((item) => [
-                  '${item.material} (${item.color})',
-                  '${item.stockActual.toStringAsFixed(1)} g',
-                  '${item.stockInicial.toStringAsFixed(1)} g',
-                ])
+            .map((item) {
+              final status = item.isDepleted
+                  ? 'Agotado (0 g)'
+                  : (item.isLowStock ? 'Bajo Stock (≤ 20%)' : 'Disponible');
+              return [
+                '${item.material} (${item.color})',
+                item.brand.isNotEmpty ? item.brand : 'Genérica',
+                '${item.stockActual.toStringAsFixed(1)} g',
+                '${item.stockInicial.toStringAsFixed(1)} g',
+                status,
+              ];
+            })
             .toList();
         if (format == 'PDF') {
           await _saveInventoryPdf(rows);
@@ -7243,6 +8249,123 @@ class _ExportState extends State<ExportScreen> {
     final totalStock = tab == 1
         ? _availableInventory.fold<double>(0.0, (s, i) => s + i.stockActual)
         : 0.0;
+
+    final now = DateTime.now();
+    final currentSem = AcademicSemesterInfo.getCurrent(now);
+    final prevSem = AcademicSemesterInfo.getPrevious(now);
+    final availableSemesters =
+        AcademicSemesterInfo.getAvailable(widget.vm.allRecords, now);
+
+    final periodItems = <DropdownMenuItem<String>>[
+      DropdownMenuItem(
+        value: 'ACTUAL',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.school_outlined, size: 14, color: accentPetrol),
+            const SizedBox(width: 6),
+            Text('Semestre Actual (${currentSem.shortTerm})',
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+      DropdownMenuItem(
+        value: 'ANTERIOR',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.history_edu_outlined, size: 14, color: accentPetrol),
+            const SizedBox(width: 6),
+            Text('Semestre Anterior (${prevSem.shortTerm})',
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    ];
+
+    for (final sem in availableSemesters) {
+      if ((sem.year == currentSem.year && sem.semNum == currentSem.semNum) ||
+          (sem.year == prevSem.year && sem.semNum == prevSem.semNum)) {
+        continue;
+      }
+      periodItems.add(
+        DropdownMenuItem(
+          value: sem.key,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.calendar_month_outlined,
+                  size: 14, color: textSecondary),
+              const SizedBox(width: 6),
+              Text(sem.term, style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    periodItems.addAll([
+      DropdownMenuItem(
+        value: 'ESTE MES',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_view_month, size: 14, color: textMuted),
+            const SizedBox(width: 6),
+            const Text('Este mes', style: TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
+      DropdownMenuItem(
+        value: '7 DÍAS',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.date_range, size: 14, color: textMuted),
+            const SizedBox(width: 6),
+            const Text('Últimos 7 días', style: TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
+      DropdownMenuItem(
+        value: 'HOY',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.today, size: 14, color: textMuted),
+            const SizedBox(width: 6),
+            const Text('Hoy', style: TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
+      DropdownMenuItem(
+        value: 'TODOS',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.all_inclusive, size: 14, color: textMuted),
+            const SizedBox(width: 6),
+            const Text('Histórico completo', style: TextStyle(fontSize: 12)),
+          ],
+        ),
+      ),
+    ]);
+
+    if (!periodItems.any((item) => item.value == period)) {
+      if (period.startsWith('SEM_')) {
+        final s = AcademicSemesterInfo.getActive(period, now);
+        periodItems.add(
+          DropdownMenuItem(
+            value: period,
+            child: Text(s.term, style: const TextStyle(fontSize: 12)),
+          ),
+        );
+      } else {
+        period = 'ACTUAL';
+      }
+    }
 
     return Scaffold(
       appBar: darkAppBar(
@@ -7335,7 +8458,7 @@ class _ExportState extends State<ExportScreen> {
 
                 const SizedBox(width: 10),
 
-                // Selector de Periodo (solo en tab Impresiones)
+                // Selector de Periodo y Semestre (solo en tab Impresiones)
                 if (tab == 0) ...[
                   Container(
                     height: 36,
@@ -7351,25 +8474,16 @@ class _ExportState extends State<ExportScreen> {
                       dropdownColor: surfaceElevated,
                       icon: Icon(Icons.arrow_drop_down,
                           color: textSecondary, size: 18),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'HOY',
-                            child: Text('Hoy', style: TextStyle(fontSize: 12))),
-                        DropdownMenuItem(
-                            value: '7 DÍAS',
-                            child: Text('Últimos 7 días',
-                                style: TextStyle(fontSize: 12))),
-                        DropdownMenuItem(
-                            value: 'ESTE MES',
-                            child: Text('Este mes',
-                                style: TextStyle(fontSize: 12))),
-                        DropdownMenuItem(
-                            value: 'TODOS',
-                            child: Text('Histórico completo',
-                                style: TextStyle(fontSize: 12))),
-                      ],
-                      onChanged: (v) =>
-                          setState(() => period = v ?? 'ESTE MES'),
+                      items: periodItems,
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() {
+                          period = v;
+                          selectedPrint.clear();
+                          selectedPrint
+                              .addAll(_filteredPrints.map((r) => r.id));
+                        });
+                      },
                       style: TextStyle(
                         color: textPrimary,
                         fontSize: 12,
@@ -7378,6 +8492,184 @@ class _ExportState extends State<ExportScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
+                ],
+
+                // Selectores de Inventario (solo en tab Inventario)
+                if (tab == 1) ...[
+                  // 1. Selector de Tipo de Material
+                  Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: inventoryMaterialFilter != 'TODOS'
+                          ? accentPetrol.withValues(alpha: 0.12)
+                          : surfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: inventoryMaterialFilter != 'TODOS'
+                            ? accentPetrol
+                            : borderSubtle,
+                      ),
+                    ),
+                    child: DropdownButton<String>(
+                      value:
+                          _availableMaterials.contains(inventoryMaterialFilter)
+                              ? inventoryMaterialFilter
+                              : 'TODOS',
+                      underline: const SizedBox(),
+                      dropdownColor: surfaceElevated,
+                      icon: Icon(Icons.arrow_drop_down,
+                          color: textSecondary, size: 18),
+                      items: _availableMaterials.map((mat) {
+                        final isAll = mat == 'TODOS';
+                        return DropdownMenuItem(
+                          value: mat,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                isAll ? Icons.category_outlined : Icons.layers,
+                                size: 14,
+                                color: isAll ? textSecondary : accentPetrol,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                isAll ? 'Todos los materiales' : mat,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isAll
+                                      ? FontWeight.normal
+                                      : FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() {
+                          inventoryMaterialFilter = v;
+                          selectedInventory.clear();
+                          selectedInventory
+                              .addAll(_filteredInventory.map((i) => i.id));
+                        });
+                      },
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
+
+                  // 2. Selector de Bajo Stock
+                  Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: inventoryStockFilter == 'BAJO'
+                          ? Colors.amber.withValues(alpha: 0.12)
+                          : (inventoryStockFilter == 'AGOTADO'
+                              ? Colors.red.withValues(alpha: 0.12)
+                              : surfaceElevated),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: inventoryStockFilter == 'BAJO'
+                            ? Colors.amber.shade700
+                            : (inventoryStockFilter == 'AGOTADO'
+                                ? Colors.red.shade700
+                                : borderSubtle),
+                      ),
+                    ),
+                    child: DropdownButton<String>(
+                      value: inventoryStockFilter,
+                      underline: const SizedBox(),
+                      dropdownColor: surfaceElevated,
+                      icon: Icon(Icons.arrow_drop_down,
+                          color: textSecondary, size: 18),
+                      items: [
+                        DropdownMenuItem(
+                          value: 'TODOS',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.inventory_2_outlined,
+                                  size: 14, color: textSecondary),
+                              const SizedBox(width: 6),
+                              const Text('Todo el stock',
+                                  style: TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'BAJO',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.warning_amber_rounded,
+                                  size: 14, color: Colors.amber),
+                              const SizedBox(width: 6),
+                              const Text('Bajo stock (≤ 20%)',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.amber,
+                                  )),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'AGOTADO',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.remove_circle_outline,
+                                  size: 14, color: Colors.redAccent),
+                              const SizedBox(width: 6),
+                              const Text('Agotados (0 g)',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.redAccent,
+                                  )),
+                            ],
+                          ),
+                        ),
+                        DropdownMenuItem(
+                          value: 'OPTIMO',
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_outline,
+                                  size: 14, color: Colors.green),
+                              const SizedBox(width: 6),
+                              const Text('Stock óptimo (> 20%)',
+                                  style: TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                      ],
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() {
+                          inventoryStockFilter = v;
+                          selectedInventory.clear();
+                          selectedInventory
+                              .addAll(_filteredInventory.map((i) => i.id));
+                        });
+                      },
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 8),
                 ],
 
                 // Botón Seleccionar Visibles

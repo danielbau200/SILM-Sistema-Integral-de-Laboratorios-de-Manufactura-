@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 bool _isDarkMode = false;
 
 void setVoxelDarkMode(bool enabled) => _isDarkMode = enabled;
+bool get isVoxelDarkMode => _isDarkMode;
 
 // --- PALETA APPLE ---
 Color get bgBase =>
