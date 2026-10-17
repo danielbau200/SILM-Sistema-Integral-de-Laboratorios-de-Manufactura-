@@ -31,6 +31,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('OPERATIVO'), findsNothing);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SidebarToggleIcon && widget.color == accentPetrol,
+      ),
+      findsOneWidget,
+    );
     expect(find.byTooltip('Activar modo oscuro'), findsOneWidget);
 
     await tester.tap(find.byTooltip('Activar modo oscuro'));
