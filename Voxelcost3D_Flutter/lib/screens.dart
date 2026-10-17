@@ -5147,7 +5147,6 @@ class _AnalyticsState extends State<AnalyticsScreen> {
   String _selectedPeriod = 'ACTUAL'; // 'ACTUAL', 'ANTERIOR', 'TODOS', o 'SEM_2026_2'
   String? _selectedMonthKey; // ej. '2026-AGO'
   int _metricIndex = 0; // 0 = Gramos, 1 = Piezas
-  int? _hoveredBarIndex;
 
   bool get _isDarkMode => isVoxelDarkMode;
 
@@ -5173,12 +5172,6 @@ class _AnalyticsState extends State<AnalyticsScreen> {
 
   AcademicSemesterInfo _getPreviousSemester(DateTime now) =>
       AcademicSemesterInfo.getPrevious(now);
-
-  AcademicSemesterInfo _getAllSemestersInfo() =>
-      AcademicSemesterInfo.getAll();
-
-  AcademicSemesterInfo _getSpecificSemester(int year, int semNum) =>
-      AcademicSemesterInfo.getSpecific(year, semNum);
 
   AcademicSemesterInfo _getActiveSemesterInfo() =>
       AcademicSemesterInfo.getActive(_selectedPeriod);
@@ -8263,7 +8256,7 @@ class _ExportState extends State<ExportScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.school_outlined, size: 14, color: accentPetrol),
+            const Icon(Icons.school_outlined, size: 14, color: accentPetrol),
             const SizedBox(width: 6),
             Text('Semestre Actual (${currentSem.shortTerm})',
                 style:
@@ -8276,7 +8269,8 @@ class _ExportState extends State<ExportScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.history_edu_outlined, size: 14, color: accentPetrol),
+            const Icon(Icons.history_edu_outlined,
+                size: 14, color: accentPetrol),
             const SizedBox(width: 6),
             Text('Semestre Anterior (${prevSem.shortTerm})',
                 style:
@@ -8605,15 +8599,15 @@ class _ExportState extends State<ExportScreen> {
                             ],
                           ),
                         ),
-                        DropdownMenuItem(
+                        const DropdownMenuItem(
                           value: 'BAJO',
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.warning_amber_rounded,
                                   size: 14, color: Colors.amber),
-                              const SizedBox(width: 6),
-                              const Text('Bajo stock (≤ 20%)',
+                              SizedBox(width: 6),
+                              Text('Bajo stock (≤ 20%)',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
@@ -8622,15 +8616,15 @@ class _ExportState extends State<ExportScreen> {
                             ],
                           ),
                         ),
-                        DropdownMenuItem(
+                        const DropdownMenuItem(
                           value: 'AGOTADO',
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.remove_circle_outline,
                                   size: 14, color: Colors.redAccent),
-                              const SizedBox(width: 6),
-                              const Text('Agotados (0 g)',
+                              SizedBox(width: 6),
+                              Text('Agotados (0 g)',
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
@@ -8639,15 +8633,15 @@ class _ExportState extends State<ExportScreen> {
                             ],
                           ),
                         ),
-                        DropdownMenuItem(
+                        const DropdownMenuItem(
                           value: 'OPTIMO',
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Icon(Icons.check_circle_outline,
                                   size: 14, color: Colors.green),
-                              const SizedBox(width: 6),
-                              const Text('Stock óptimo (> 20%)',
+                              SizedBox(width: 6),
+                              Text('Stock óptimo (> 20%)',
                                   style: TextStyle(fontSize: 12)),
                             ],
                           ),
