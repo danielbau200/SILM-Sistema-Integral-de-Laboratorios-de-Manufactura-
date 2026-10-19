@@ -14,6 +14,7 @@ import 'models.dart';
 import 'pedido_materiales.dart'
     show PedidoMaterialesWidget, PedidoMaterialesWidgetState;
 import 'theme.dart';
+import 'word_inventory_exporter.dart';
 
 void toast(BuildContext context, String message, {bool isError = false}) {
   ScaffoldMessenger.of(context)
@@ -1464,7 +1465,8 @@ class _HistoryState extends State<PrintHistoryScreen> {
   bool _ownsInvVm = false;
 
   final TextEditingController _searchController = TextEditingController();
-  String _activeFilter = 'Todos'; // 'Todos', 'PLA', 'PETG', 'Este mes'
+  String _periodFilter = 'ACTUAL';
+  String _materialFilter = 'TODOS';
 
   @override
   void initState() {
@@ -1491,26 +1493,90 @@ class _HistoryState extends State<PrintHistoryScreen> {
     super.dispose();
   }
 
+  List<String> _getAvailableMaterials() {
+    final set = <String>{};
+    for (final r in vm.allRecords) {
+      for (final m in r.materials) {
+        final t = m.type.trim().toUpperCase();
+        if (t.isNotEmpty) set.add(t);
+      }
+    }
+    for (final item in inventoryVm.inventoryItems) {
+      final m = item.material.trim().toUpperCase();
+      if (m.isNotEmpty) set.add(m);
+    }
+    if (set.isEmpty) {
+      set.addAll(['PLA', 'PETG', 'ABS', 'TPU']);
+    }
+    final list = set.toList()..sort();
+    return ['TODOS', ...list];
+  }
+
+  String _getPeriodLabel() {
+    final now = DateTime.now();
+    switch (_periodFilter) {
+      case 'HOY':
+        return 'Hoy';
+      case '7 DÍAS':
+        return 'Últimos 7 días';
+      case 'ESTE MES':
+        return 'Este mes';
+      case 'TODOS':
+        return 'Histórico completo';
+      case 'ACTUAL':
+        final s = AcademicSemesterInfo.getCurrent(now);
+        return 'Semestre Actual (${s.shortTerm})';
+      case 'ANTERIOR':
+        final s = AcademicSemesterInfo.getPrevious(now);
+        return 'Semestre Anterior (${s.shortTerm})';
+      default:
+        if (_periodFilter.startsWith('SEM_')) {
+          final s = AcademicSemesterInfo.getActive(_periodFilter, now);
+          return s.term;
+        }
+        return _periodFilter;
+    }
+  }
+
   List<PrintRecord> _getFilteredRecords() {
     final query = _searchController.text.trim().toLowerCase();
     final now = DateTime.now();
 
     return vm.allRecords.where((r) {
-      // 1. Filtro por Chips
-      if (_activeFilter == 'PLA') {
-        if (!r.materials.any((m) => m.type.toUpperCase() == 'PLA')) {
+      // 1. Filtro por Periodo / Semestre (exactamente como en Exportar)
+      final d = DateTime.fromMillisecondsSinceEpoch(r.date);
+      if (_periodFilter == 'HOY') {
+        final startOfDay = DateTime(now.year, now.month, now.day);
+        if (!d.isAfter(startOfDay.subtract(const Duration(seconds: 1)))) {
           return false;
         }
-      } else if (_activeFilter == 'PETG') {
-        if (!r.materials.any((m) => m.type.toUpperCase() == 'PETG')) {
+      } else if (_periodFilter == '7 DÍAS') {
+        final sevenDaysAgo = now.subtract(const Duration(days: 7));
+        if (!d.isAfter(sevenDaysAgo)) return false;
+      } else if (_periodFilter == 'ESTE MES') {
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        if (!d.isAfter(startOfMonth.subtract(const Duration(seconds: 1)))) {
           return false;
         }
-      } else if (_activeFilter == 'Este mes') {
-        final d = DateTime.fromMillisecondsSinceEpoch(r.date);
-        if (d.year != now.year || d.month != now.month) return false;
+      } else if (_periodFilter == 'ACTUAL' ||
+          _periodFilter == 'ANTERIOR' ||
+          _periodFilter.startsWith('SEM_')) {
+        final sem = AcademicSemesterInfo.getActive(_periodFilter, now);
+        if (r.date < sem.startDate.millisecondsSinceEpoch ||
+            r.date > sem.endDate.millisecondsSinceEpoch) {
+          return false;
+        }
+      }
+      // 'TODOS' no filtra por fecha
+
+      // 2. Filtro por Tipo de Material
+      if (_materialFilter != 'TODOS') {
+        final hasMat = r.materials.any((m) =>
+            m.type.trim().toUpperCase() == _materialFilter.trim().toUpperCase());
+        if (!hasMat) return false;
       }
 
-      // 2. Filtro por búsqueda (archivo, proyecto, solicitante, no. de control, impresora o color)
+      // 3. Filtro por búsqueda (archivo, proyecto, solicitante, no. de control, impresora o color)
       if (query.isNotEmpty) {
         final matchPiece = r.pieceType.toLowerCase().contains(query);
         final matchProject =
@@ -1569,30 +1635,61 @@ class _HistoryState extends State<PrintHistoryScreen> {
             backgroundColor: bgBase,
             body: LayoutBuilder(
               builder: (context, constraints) {
-                final isNarrow = constraints.maxWidth < 780;
+                final isNarrow = constraints.maxWidth < 820;
                 return ListView(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
                   children: [
-                    _searchAndFilterRow(),
-                    const SizedBox(height: 16),
+                    _searchAndFilterRow(filtered.length),
+                    const SizedBox(height: 18),
                     if (vm.error != null) ...[
                       _databaseError(vm.error!),
                       const SizedBox(height: 14),
                     ],
-                    _tableHeader(isNarrow),
-                    const SizedBox(height: 8),
                     if (filtered.isEmpty)
                       _emptyState(_searchController.text.isNotEmpty ||
-                          _activeFilter != 'Todos')
+                          _periodFilter != 'TODOS' ||
+                          _materialFilter != 'TODOS')
                     else
-                      ...filtered.map(
-                        (record) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _recordRow(context, vm, record,
-                              isNarrow: isNarrow),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: surfaceCard,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: borderSubtle),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(
+                                  alpha: isVoxelDarkMode ? 0.25 : 0.03),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _tableHeader(isNarrow, filtered.length),
+                            Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: borderSubtle,
+                            ),
+                            for (int i = 0; i < filtered.length; i++) ...[
+                              if (i > 0)
+                                Divider(
+                                  height: 1,
+                                  thickness: 1,
+                                  color: borderSubtle.withValues(
+                                      alpha: isVoxelDarkMode ? 0.5 : 0.65),
+                                ),
+                              _recordRow(context, vm, filtered[i],
+                                  isNarrow: isNarrow),
+                            ],
+                          ],
                         ),
                       ),
+                    const SizedBox(height: 24),
                   ],
                 );
               },
@@ -1603,21 +1700,21 @@ class _HistoryState extends State<PrintHistoryScreen> {
 
   Widget _databaseError(String message) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: semanticDanger.withValues(alpha: 0.12),
           border: Border.all(color: semanticDanger.withValues(alpha: 0.4)),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
             const Icon(Icons.warning_amber_rounded,
-                color: semanticDanger, size: 18),
-            const SizedBox(width: 10),
+                color: semanticDanger, size: 20),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 message,
-                style: const TextStyle(color: semanticDanger, fontSize: 13),
+                style: const TextStyle(color: semanticDanger, fontSize: 14),
               ),
             ),
           ],
@@ -1625,44 +1722,51 @@ class _HistoryState extends State<PrintHistoryScreen> {
       );
 
   Widget _emptyState(bool hasFilters) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 56),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: surfaceCard,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: borderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(14),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: surfaceElevated,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.print_outlined, size: 32, color: textMuted),
+              child: Icon(Icons.layers_clear_outlined, size: 36, color: textMuted),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 16),
             Text(
               hasFilters
-                  ? 'No se encontraron registros que coincidan con la búsqueda o filtro'
+                  ? 'No se encontraron registros para el filtro o búsqueda actual'
                   : 'No hay impresiones registradas en el historial',
               style: TextStyle(
                 color: textPrimary,
-                fontSize: 13.5,
+                fontSize: 15.5,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             Text(
               hasFilters
-                  ? 'Prueba modificando los términos de búsqueda o seleccionando "Todos".'
+                  ? 'Prueba seleccionando "Histórico completo", "Todos los materiales" o modificando tu búsqueda.'
                   : 'Registra una nueva impresión para comenzar a llevar el registro.',
               style: TextStyle(
                 color: textSecondary,
-                fontSize: 12,
+                fontSize: 13.5,
               ),
               textAlign: TextAlign.center,
             ),
@@ -1670,63 +1774,295 @@ class _HistoryState extends State<PrintHistoryScreen> {
         ),
       );
 
-  Widget _searchAndFilterRow() {
+  Widget _searchAndFilterRow([int totalCount = 0]) {
     return LayoutBuilder(builder: (context, constraints) {
-      final isNarrow = constraints.maxWidth < 780;
+      final isNarrow = constraints.maxWidth < 960;
 
-      final searchField = SizedBox(
-        height: 40,
+      // 1. Buscador con estilo macOS
+      final searchField = Container(
+        height: 42,
+        decoration: BoxDecoration(
+          color: surfaceCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: borderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
         child: TextField(
           controller: _searchController,
           onChanged: (_) => setState(() {}),
-          style: TextStyle(color: textPrimary, fontSize: 13),
+          style: TextStyle(
+            color: textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+          ),
           decoration: InputDecoration(
             isDense: true,
             hintText: 'Buscar por pieza, solicitante, material o impresora...',
-            hintStyle: TextStyle(color: textMuted, fontSize: 12.5),
-            prefixIcon: Icon(Icons.search, size: 18, color: textMuted),
+            hintStyle: TextStyle(color: textMuted, fontSize: 13.5),
+            prefixIcon: Icon(Icons.search_rounded, size: 20, color: textMuted),
             suffixIcon: _searchController.text.isNotEmpty
                 ? IconButton(
-                    icon: Icon(Icons.close, size: 16, color: textMuted),
+                    icon: Icon(Icons.cancel_rounded, size: 18, color: textMuted),
+                    splashRadius: 16,
                     onPressed: () {
                       _searchController.clear();
                       setState(() {});
                     },
                   )
                 : null,
-            filled: true,
-            fillColor: surfaceElevated,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: borderSubtle),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: borderSubtle),
-            ),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: accentPetrol, width: 1.5),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
+        ),
+      );
+
+      // 2. Opciones de Semestre / Periodo (igual que en ExportScreen)
+      final now = DateTime.now();
+      final currentSem = AcademicSemesterInfo.getCurrent(now);
+      final prevSem = AcademicSemesterInfo.getPrevious(now);
+      final availableSemesters =
+          AcademicSemesterInfo.getAvailable(vm.allRecords, now);
+
+      final periodItems = <DropdownMenuItem<String>>[
+        DropdownMenuItem(
+          value: 'ACTUAL',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.school_outlined, size: 15, color: accentPetrol),
+              const SizedBox(width: 8),
+              Text('Semestre Actual (${currentSem.shortTerm})',
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'ANTERIOR',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.history_edu_outlined,
+                  size: 15, color: accentPetrol),
+              const SizedBox(width: 8),
+              Text('Semestre Anterior (${prevSem.shortTerm})',
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ];
+
+      for (final sem in availableSemesters) {
+        if ((sem.year == currentSem.year && sem.semNum == currentSem.semNum) ||
+            (sem.year == prevSem.year && sem.semNum == prevSem.semNum)) {
+          continue;
+        }
+        periodItems.add(
+          DropdownMenuItem(
+            value: sem.key,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.calendar_month_outlined,
+                    size: 15, color: textSecondary),
+                const SizedBox(width: 8),
+                Text(sem.term, style: const TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
+        );
+      }
+
+      periodItems.addAll([
+        DropdownMenuItem(
+          value: 'ESTE MES',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.calendar_view_month, size: 15, color: textMuted),
+              const SizedBox(width: 8),
+              const Text('Este mes', style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
+        DropdownMenuItem(
+          value: '7 DÍAS',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.date_range, size: 15, color: textMuted),
+              const SizedBox(width: 8),
+              const Text('Últimos 7 días', style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'HOY',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.today, size: 15, color: textMuted),
+              const SizedBox(width: 8),
+              const Text('Hoy', style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
+        DropdownMenuItem(
+          value: 'TODOS',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.all_inclusive, size: 15, color: textMuted),
+              const SizedBox(width: 8),
+              const Text('Histórico completo', style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
+      ]);
+
+      if (!periodItems.any((item) => item.value == _periodFilter)) {
+        if (_periodFilter.startsWith('SEM_')) {
+          final s = AcademicSemesterInfo.getActive(_periodFilter, now);
+          periodItems.add(
+            DropdownMenuItem(
+              value: _periodFilter,
+              child: Text(s.term, style: const TextStyle(fontSize: 13)),
+            ),
+          );
+        } else {
+          _periodFilter = 'ACTUAL';
+        }
+      }
+
+      final periodSelector = Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: surfaceCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: _periodFilter != 'TODOS'
+                ? accentPetrol.withValues(alpha: 0.5)
+                : borderSubtle,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: _periodFilter,
+            dropdownColor: surfaceCard,
+            borderRadius: BorderRadius.circular(10),
+            icon: Icon(Icons.arrow_drop_down_rounded,
+                color: textSecondary, size: 22),
+            items: periodItems,
+            onChanged: (val) {
+              if (val != null) {
+                setState(() => _periodFilter = val);
+              }
+            },
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
       );
 
-      final filterChips = Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _filterChip('Todos'),
-          const SizedBox(width: 6),
-          _filterChip('PLA'),
-          const SizedBox(width: 6),
-          _filterChip('PETG'),
-          const SizedBox(width: 6),
-          _filterChip('Este mes'),
-        ],
+      // 3. Dropdown de Tipo de Material
+      final availableMaterials = _getAvailableMaterials();
+      if (!availableMaterials.contains(_materialFilter)) {
+        _materialFilter = 'TODOS';
+      }
+
+      final materialSelector = Container(
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: _materialFilter != 'TODOS'
+              ? accentPetrol.withValues(alpha: 0.08)
+              : surfaceCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: _materialFilter != 'TODOS'
+                ? accentPetrol
+                : borderSubtle,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: _materialFilter,
+            dropdownColor: surfaceCard,
+            borderRadius: BorderRadius.circular(10),
+            icon: Icon(Icons.arrow_drop_down_rounded,
+                color: textSecondary, size: 22),
+            onChanged: (val) {
+              if (val != null) {
+                setState(() => _materialFilter = val);
+              }
+            },
+            items: availableMaterials.map((mat) {
+              final isAll = mat == 'TODOS';
+              return DropdownMenuItem(
+                value: mat,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isAll ? Icons.category_outlined : Icons.layers_rounded,
+                      size: 15,
+                      color: isAll ? textSecondary : accentPetrol,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isAll ? 'Todos los materiales' : mat,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            isAll ? FontWeight.normal : FontWeight.w600,
+                        color: isAll ? textPrimary : accentPetrol,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
       );
 
+      // 4. Botón Nueva impresión estilo macOS
       final newPrintBtn = ElevatedButton.icon(
         onPressed: () => Navigator.push(
           context,
@@ -1734,14 +2070,14 @@ class _HistoryState extends State<PrintHistoryScreen> {
             builder: (_) => PrintFormScreen(vm: vm, inventoryVm: inventoryVm),
           ),
         ),
-        icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+        icon: const Icon(Icons.add_rounded, size: 20, color: Colors.white),
         label: const Text(
           'Nueva impresión',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 13,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
+            letterSpacing: -0.1,
           ),
         ),
         style: ElevatedButton.styleFrom(
@@ -1749,10 +2085,10 @@ class _HistoryState extends State<PrintHistoryScreen> {
           foregroundColor: Colors.white,
           elevation: 0,
           shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          minimumSize: const Size(0, 40),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+          minimumSize: const Size(0, 42),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
       );
@@ -1764,14 +2100,20 @@ class _HistoryState extends State<PrintHistoryScreen> {
             Row(
               children: [
                 Expanded(child: searchField),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 newPrintBtn,
               ],
             ),
             const SizedBox(height: 10),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: filterChips,
+              child: Row(
+                children: [
+                  periodSelector,
+                  const SizedBox(width: 10),
+                  materialSelector,
+                ],
+              ),
             ),
           ],
         );
@@ -1780,8 +2122,10 @@ class _HistoryState extends State<PrintHistoryScreen> {
           children: [
             Expanded(child: searchField),
             const SizedBox(width: 12),
-            filterChips,
-            const SizedBox(width: 14),
+            periodSelector,
+            const SizedBox(width: 12),
+            materialSelector,
+            const SizedBox(width: 12),
             newPrintBtn,
           ],
         );
@@ -1789,126 +2133,110 @@ class _HistoryState extends State<PrintHistoryScreen> {
     });
   }
 
-  Widget _filterChip(String label) {
-    final isSelected = _activeFilter == label;
-    return InkWell(
-      onTap: () => setState(() => _activeFilter = label),
-      borderRadius: BorderRadius.circular(8),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        height: 40,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? surfaceElevated : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? accentPetrol : borderSubtle,
-            width: isSelected ? 1.4 : 1.0,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected ? textPrimary : textSecondary,
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _tableHeader(bool isNarrow, [int count = 0]) {
+    final pLabel = _getPeriodLabel();
+    final matLabel = _materialFilter != 'TODOS' ? ' • $_materialFilter' : '';
+    final countLabel = count > 0 ? ' ($count)' : '';
 
-  Widget _tableHeader(bool isNarrow) {
     if (isNarrow) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      return Container(
+        color: isVoxelDarkMode
+            ? surfaceElevated.withValues(alpha: 0.6)
+            : const Color(0xFFF9FAFB),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
           children: [
-            const SizedBox(width: 20),
-            Text(
-              'PIEZA',
-              style: TextStyle(
-                color: textMuted,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
+            Expanded(
+              child: Text(
+                'PIEZAS REGISTRADAS$countLabel • $pLabel$matLabel',
+                style: TextStyle(
+                  color: textMuted,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.7,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            const Spacer(),
+            const SizedBox(width: 8),
             Text(
               'FILAMENTO',
               style: TextStyle(
                 color: textMuted,
-                fontSize: 11,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
+                letterSpacing: 0.7,
               ),
             ),
-            const SizedBox(width: 36),
+            const SizedBox(width: 42),
           ],
         ),
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return Container(
+      color: isVoxelDarkMode
+          ? surfaceElevated.withValues(alpha: 0.6)
+          : const Color(0xFFF9FAFB),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
       child: Row(
         children: [
-          const SizedBox(width: 25),
           Expanded(
             flex: 4,
             child: Text(
-              'PIEZA',
+              'PIEZA Y PROYECTO$countLabel • $pLabel$matLabel',
               style: TextStyle(
                 color: textMuted,
-                fontSize: 11,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
+                letterSpacing: 0.7,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 16),
           Expanded(
             flex: 3,
             child: Text(
               'SOLICITANTE',
               style: TextStyle(
                 color: textMuted,
-                fontSize: 11,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
+                letterSpacing: 0.7,
               ),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 16),
           Expanded(
             flex: 3,
             child: Text(
-              'DETALLES TÉCNICOS',
+              'MATERIAL E IMPRESORA',
               style: TextStyle(
                 color: textMuted,
-                fontSize: 11,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
+                letterSpacing: 0.7,
               ),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 16),
           SizedBox(
-            width: 85,
+            width: 90,
             child: Text(
               'FILAMENTO',
               textAlign: TextAlign.right,
               style: TextStyle(
                 color: textMuted,
-                fontSize: 11,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
+                letterSpacing: 0.7,
               ),
             ),
           ),
-          const SizedBox(width: 44),
+          const SizedBox(width: 42),
         ],
       ),
     );
@@ -1917,6 +2245,7 @@ class _HistoryState extends State<PrintHistoryScreen> {
   Widget _recordRow(BuildContext context, PrintViewModel vm, PrintRecord r,
       {bool isNarrow = false}) {
     return _PrintRecordRow(
+      key: ValueKey(r.id),
       record: r,
       vm: vm,
       inventoryVm: inventoryVm,
@@ -2076,6 +2405,7 @@ class _PrintRecordRow extends StatefulWidget {
   final bool isNarrow;
 
   const _PrintRecordRow({
+    super.key,
     required this.record,
     required this.vm,
     required this.inventoryVm,
@@ -2131,7 +2461,10 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
 
     final hasProjectName = (r.projectName ?? '').trim().isNotEmpty;
     final mainTitle = hasProjectName ? r.projectName!.trim() : r.pieceType;
-    final subtitleFileName = hasProjectName ? r.pieceType : null;
+    final subtitleFileName =
+        (hasProjectName && r.pieceType.trim() != r.projectName!.trim())
+            ? r.pieceType
+            : null;
 
     final totalGramsStr = r.totalGrams % 1 == 0
         ? '${r.totalGrams.toInt()} g'
@@ -2145,18 +2478,30 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
       width: 32,
       height: 32,
       child: PopupMenuButton<String>(
-        tooltip: 'Opciones',
+        tooltip: 'Opciones de impresión',
         color: surfaceCard,
-        elevation: 6,
+        elevation: 8,
         padding: EdgeInsets.zero,
-        icon: Icon(
-          Icons.more_vert,
-          size: 18,
-          color: _isHovered ? textPrimary : textSecondary,
+        icon: Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: _isHovered
+                ? (isVoxelDarkMode
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : const Color(0xFFE5E7EB))
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Icon(
+            Icons.more_horiz_rounded,
+            size: 19,
+            color: _isHovered ? textPrimary : textMuted,
+          ),
         ),
-        constraints: const BoxConstraints(minWidth: 130),
+        constraints: const BoxConstraints(minWidth: 140),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           side: BorderSide(color: borderSubtle),
         ),
         onSelected: (val) {
@@ -2178,32 +2523,38 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
         itemBuilder: (ctx) => [
           PopupMenuItem(
             value: 'edit',
-            height: 36,
+            height: 38,
             child: Row(
               children: [
                 Icon(Icons.edit_outlined, size: 16, color: textPrimary),
-                const SizedBox(width: 8),
-                Text('Editar',
-                    style: TextStyle(
-                        color: textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500)),
+                const SizedBox(width: 10),
+                Text(
+                  'Editar',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
           const PopupMenuDivider(height: 1),
           const PopupMenuItem(
             value: 'delete',
-            height: 36,
+            height: 38,
             child: Row(
               children: [
                 Icon(Icons.delete_outline, size: 16, color: semanticDanger),
-                SizedBox(width: 8),
-                Text('Eliminar',
-                    style: TextStyle(
-                        color: semanticDanger,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600)),
+                SizedBox(width: 10),
+                Text(
+                  'Eliminar',
+                  style: TextStyle(
+                    color: semanticDanger,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),
@@ -2211,20 +2562,21 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
       ),
     );
 
+    final baseRowColor = isVoxelDarkMode ? surfaceCard : Colors.white;
+    final hoverRowColor = isVoxelDarkMode
+        ? const Color(0xFF232834)
+        : const Color(0xFFF3F5F8);
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color:
-              _isHovered ? surfaceElevated.withValues(alpha: 0.7) : surfaceCard,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: _isHovered ? borderStrong : borderSubtle,
-          ),
+        duration: const Duration(milliseconds: 100),
+        padding: EdgeInsets.symmetric(
+          horizontal: widget.isNarrow ? 16 : 20,
+          vertical: widget.isNarrow ? 12 : 11,
         ),
+        color: _isHovered ? hoverRowColor : baseRowColor,
         child: widget.isNarrow
             ? _buildNarrowLayout(
                 r,
@@ -2269,15 +2621,7 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 1. Punto de color simple y elegante
-        colorSwatchCircle(
-          primaryColor.color,
-          size: 11,
-          isTransparent: primaryColor.isTransparent,
-        ),
-        const SizedBox(width: 14),
-
-        // 2. Columna: PIEZA Y PROYECTO
+        // 1. Columna: PIEZA Y PROYECTO
         Expanded(
           flex: 4,
           child: Column(
@@ -2291,29 +2635,33 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
                       mainTitle,
                       style: TextStyle(
                         color: textPrimary,
-                        fontSize: 13.5,
+                        fontSize: 14.5,
                         fontWeight: FontWeight.w600,
+                        letterSpacing: -0.2,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (isMultiQty) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 1),
+                          horizontal: 6, vertical: 1.5),
                       decoration: BoxDecoration(
-                        color: surfaceElevated,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: borderSubtle),
+                        color: accentPetrol.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                          color: accentPetrol.withValues(alpha: 0.25),
+                          width: 0.8,
+                        ),
                       ),
                       child: Text(
                         '× ${r.cantidad}',
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
+                        style: const TextStyle(
+                          color: accentPetrol,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -2324,52 +2672,51 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
               Row(
                 children: [
                   if (subtitleFileName != null &&
-                      subtitleFileName.trim().isNotEmpty)
+                      subtitleFileName.trim().isNotEmpty) ...[
                     Flexible(
                       child: Text(
                         subtitleFileName,
                         style: TextStyle(
                           color: textSecondary,
-                          fontSize: 11.5,
+                          fontSize: 12.5,
                           fontWeight: FontWeight.w400,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  if (r.figureCategory.trim().isNotEmpty) ...[
-                    if (subtitleFileName != null &&
-                        subtitleFileName.trim().isNotEmpty)
-                      Text(
-                        ' · ',
-                        style: TextStyle(color: textMuted, fontSize: 11),
-                      ),
                     Text(
-                      r.figureCategory,
+                      ' • ',
+                      style: TextStyle(color: textMuted, fontSize: 12),
+                    ),
+                  ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: surfaceElevated,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: borderSubtle),
+                    ),
+                    child: Text(
+                      r.figureCategory.trim().isNotEmpty
+                          ? r.figureCategory.trim()
+                          : 'Pieza 3D',
                       style: TextStyle(
                         color: textMuted,
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                  ],
-                  if ((subtitleFileName == null || subtitleFileName.isEmpty) &&
-                      r.figureCategory.trim().isEmpty)
-                    Text(
-                      'Pieza 3D',
-                      style: TextStyle(
-                        color: textMuted.withValues(alpha: 0.6),
-                        fontSize: 11,
-                      ),
-                    ),
+                  ),
                 ],
               ),
             ],
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 16),
 
-        // 3. Columna: SOLICITANTE
+        // 2. Columna: SOLICITANTE
         Expanded(
           flex: 3,
           child: Column(
@@ -2377,41 +2724,59 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if ((r.requesterName ?? '').trim().isNotEmpty) ...[
-                Text(
-                  r.requesterName!.trim(),
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Icon(
+                      Icons.person_outline_rounded,
+                      size: 15,
+                      color: accentPetrol.withValues(alpha: 0.8),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        r.requesterName!.trim(),
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.1,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  '${r.requesterType ?? 'Solicitante'}${r.requesterId != null && r.requesterId!.isNotEmpty ? ' (${r.requesterId})' : ''}',
-                  style: TextStyle(
-                    color: textMuted,
-                    fontSize: 11,
+                Padding(
+                  padding: const EdgeInsets.only(left: 21),
+                  child: Text(
+                    '${r.requesterType ?? 'Solicitante'}${r.requesterId != null && r.requesterId!.isNotEmpty ? ' • ${r.requesterId}' : ''}',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
               ] else ...[
                 Text(
-                  '—',
+                  'Sin solicitante',
                   style: TextStyle(
                     color: textMuted,
-                    fontSize: 13,
+                    fontSize: 12.5,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
               ],
             ],
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 16),
 
-        // 4. Columna: DETALLES TÉCNICOS (Material, Impresora, Fecha, Tiempo)
+        // 3. Columna: MATERIAL E IMPRESORA
         Expanded(
           flex: 3,
           child: Column(
@@ -2424,23 +2789,46 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
                 children: [
                   Flexible(
                     child: Text(
-                      '$dateStr · ${(r.printerName ?? '').trim().isNotEmpty ? r.printerName! : 'Estándar'}',
+                      (r.printerName ?? '').trim().isNotEmpty
+                          ? r.printerName!
+                          : 'Estándar',
                       style: TextStyle(
-                        color: textMuted,
-                        fontSize: 11,
+                        color: textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  Text(
+                    ' • ',
+                    style: TextStyle(color: textMuted, fontSize: 12),
+                  ),
+                  Text(
+                    dateStr,
+                    style: TextStyle(
+                      color: textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
                   if ((r.printTime ?? '').trim().isNotEmpty) ...[
                     const SizedBox(width: 6),
-                    Text(
-                      '⏱ ${r.printTime}',
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w500,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: surfaceElevated,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: borderSubtle),
+                      ),
+                      child: Text(
+                        '⏱ ${r.printTime}',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ],
@@ -2449,11 +2837,11 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
             ],
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 16),
 
-        // 5. Columna: FILAMENTO
+        // 4. Columna: FILAMENTO
         SizedBox(
-          width: 85,
+          width: 90,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
@@ -2462,8 +2850,9 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
                 totalGramsStr,
                 style: TextStyle(
                   color: textPrimary,
-                  fontSize: 14,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
                 ),
               ),
               const SizedBox(height: 2),
@@ -2471,15 +2860,16 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
                 isMultiQty ? unitGramsStr : 'total',
                 style: TextStyle(
                   color: textMuted,
-                  fontSize: 10,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 10),
 
-        // 6. Columna: OPCIONES
+        // 5. Columna: OPCIONES
         optionsMenu,
       ],
     );
@@ -2502,89 +2892,139 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            colorSwatchCircle(
-              primaryColor.color,
-              size: 10,
-              isTransparent: primaryColor.isTransparent,
-            ),
-            const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                mainTitle,
-                style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      mainTitle,
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.2,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (isMultiQty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: accentPetrol.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '× ${r.cantidad}',
+                        style: const TextStyle(
+                          color: accentPetrol,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
-            if (isMultiQty) ...[
-              const SizedBox(width: 6),
-              Text(
-                '× ${r.cantidad}',
-                style: TextStyle(
-                  color: textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
             const SizedBox(width: 8),
-            Text(
-              totalGramsStr,
-              style: TextStyle(
-                color: textPrimary,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  totalGramsStr,
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  isMultiQty ? unitGramsStr : 'total',
+                  style: TextStyle(
+                    color: textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(width: 4),
             optionsMenu,
           ],
         ),
-        const SizedBox(height: 6),
-        Row(
+        if (subtitleFileName != null && subtitleFileName.trim().isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            subtitleFileName,
+            style: TextStyle(
+              color: textSecondary,
+              fontSize: 12.5,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 5,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            const SizedBox(width: 20),
-            Expanded(
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: surfaceElevated,
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: borderSubtle),
+              ),
               child: _buildMaterialSubtitle(distinctMaterials),
             ),
-            if ((r.requesterName ?? '').trim().isNotEmpty) ...[
-              const SizedBox(width: 8),
-              Text(
-                r.requesterName!.trim(),
-                style: TextStyle(
-                  color: textMuted,
-                  fontSize: 11,
+            if ((r.requesterName ?? '').trim().isNotEmpty)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: surfaceElevated,
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: borderSubtle),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.person_outline_rounded,
+                        size: 13, color: accentPetrol),
+                    const SizedBox(width: 4),
+                    Text(
+                      r.requesterName!.trim(),
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            const SizedBox(width: 20),
-            Text(
-              '$dateStr · ${(r.printerName ?? '').trim().isNotEmpty ? r.printerName! : 'Estándar'}',
-              style: TextStyle(
-                color: textMuted,
-                fontSize: 10.5,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: surfaceElevated,
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: borderSubtle),
+              ),
+              child: Text(
+                '${(r.printerName ?? '').trim().isNotEmpty ? r.printerName! : 'Estándar'} • $dateStr${(r.printTime ?? '').trim().isNotEmpty ? ' • ⏱ ${r.printTime}' : ''}',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 11.5,
+                ),
               ),
             ),
-            if ((r.printTime ?? '').trim().isNotEmpty) ...[
-              const SizedBox(width: 6),
-              Text(
-                '· ⏱ ${r.printTime}',
-                style: TextStyle(
-                  color: textMuted,
-                  fontSize: 10.5,
-                ),
-              ),
-            ],
           ],
         ),
       ],
@@ -2593,22 +3033,37 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
 
   Widget _buildMaterialSubtitle(List<_MaterialColorEntry> materials) {
     if (materials.length <= 1) {
-      return Text(
-        materials.first.fullName,
-        style: TextStyle(
-          color: textPrimary,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      final m = materials.first;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          colorSwatchCircle(
+            m.voxelColor.color,
+            size: 9,
+            isTransparent: m.voxelColor.isTransparent,
+          ),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              m.fullName,
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.1,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       );
     }
 
-    // Múltiples materiales: swatches circulares compactos con tooltip
+    // Múltiples materiales: swatches circulares elegantes con tooltip
     final List<Widget> swatches = [];
-    final bool hasOverflow = materials.length > 5;
-    final int displayCount = hasOverflow ? 4 : materials.length;
+    final bool hasOverflow = materials.length > 4;
+    final int displayCount = hasOverflow ? 3 : materials.length;
 
     for (int i = 0; i < displayCount; i++) {
       final m = materials[i];
@@ -2629,9 +3084,9 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
     }
 
     if (hasOverflow) {
-      final remainingCount = materials.length - 4;
+      final remainingCount = materials.length - 3;
       final remainingNames =
-          materials.skip(4).map((m) => m.fullName).join('\n');
+          materials.skip(3).map((m) => m.fullName).join('\n');
       swatches.add(
         Tooltip(
           message: remainingNames,
@@ -2647,7 +3102,7 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
               '+$remainingCount',
               style: TextStyle(
                 color: textSecondary,
-                fontSize: 9,
+                fontSize: 9.5,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -2657,17 +3112,19 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
     }
 
     return Row(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         ...swatches,
-        const SizedBox(width: 4),
-        Expanded(
+        const SizedBox(width: 6),
+        Flexible(
           child: Text(
             '${materials.length} materiales',
             style: TextStyle(
-              color: textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
+              color: textPrimary,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.1,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -3031,7 +3488,8 @@ class _FormState extends State<PrintFormScreen> {
                 m.combine,
                 customType: types.contains(m.type) ? '' : m.type,
                 brandText: m.brand ?? '',
-                finishText: m.finish ?? ''))
+                finishText: m.finish ?? '',
+                selectedSpoolId: m.spoolId))
             .toList() ??
         [
           _MaterialForm('PLA', '', null, '', true),
@@ -4210,6 +4668,7 @@ class _FormState extends State<PrintFormScreen> {
       effectiveType,
       colorName: m.colorName.isEmpty ? null : m.colorName,
       colorValue: m.color,
+      preferredItemId: m.selectedSpoolId,
     );
     final isOverStock = totalBatchGrams > currentStock && currentStock > 0;
     final isStandardColor =
@@ -4258,6 +4717,100 @@ class _FormState extends State<PrintFormScreen> {
             ],
           ),
           const SizedBox(height: 10),
+          if (inventoryVm.inventoryItems.isNotEmpty) ...[
+            DropdownButtonFormField<String?>(
+              key: ValueKey('spool_picker_${index}_${m.selectedSpoolId}'),
+              initialValue: m.selectedSpoolId,
+              isExpanded: true,
+              dropdownColor: surfaceCard,
+              style: TextStyle(color: textPrimary, fontSize: 12),
+              iconEnabledColor: textSecondary,
+              decoration: fieldDecoration(
+                'Bobina del inventario (opcional)',
+                hint: 'Seleccionar carrete existente...',
+                prefix:
+                    Icon(Icons.tune_outlined, size: 15, color: accentPetrol),
+              ),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('- Selección manual libre o elegir carrete -',
+                      style: TextStyle(fontSize: 12, color: textMuted)),
+                ),
+                ...inventoryVm.inventoryItems.map((item) {
+                  final statusText = item.isEnUso ? 'En uso' : 'Sellado';
+                  final locText = item.effectiveLocation;
+                  return DropdownMenuItem<String?>(
+                    value: item.id,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        colorSwatchCircle(parseHex(item.colorHex), size: 9),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${item.material} ${item.color} (${item.brand}) • ${item.stockActual.toInt()}g • $locText • $statusText',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+              onChanged: (spoolId) {
+                setState(() {
+                  m.selectedSpoolId = spoolId;
+                  if (spoolId != null) {
+                    final item = inventoryVm.inventoryItems
+                        .where((i) => i.id == spoolId)
+                        .firstOrNull;
+                    if (item != null) {
+                      if (types.contains(item.material)) {
+                        m.type = item.material;
+                        m.customType = '';
+                      } else {
+                        m.type = 'Otro';
+                        m.customType = item.material;
+                      }
+                      m.colorName = item.color;
+                      final matchVc = voxelColorPalette
+                          .where(
+                            (vc) =>
+                                vc.name.toLowerCase() ==
+                                    item.color.toLowerCase() ||
+                                vc.color.value
+                                        .toRadixString(16)
+                                        .toUpperCase() ==
+                                    item.colorHex
+                                        .replaceAll('#', '')
+                                        .toUpperCase(),
+                          )
+                          .firstOrNull;
+                      if (matchVc != null) {
+                        m.color = matchVc.value;
+                      } else {
+                        final hexVal = item.colorHex.replaceAll('#', '');
+                        m.color =
+                            int.tryParse('FF$hexVal', radix: 16) ?? 0xFF888888;
+                      }
+                      if (kMaterialBrands.contains(item.brand)) {
+                        m.selectedBrand = item.brand;
+                      } else {
+                        m.selectedBrand = '+ Otra marca';
+                        m.customBrand.text = item.brand;
+                      }
+                      if (kMaterialFinishes.contains(item.finish)) {
+                        m.selectedFinish = item.finish;
+                      } else {
+                        m.selectedFinish = 'Otro';
+                        m.customFinish.text = item.finish;
+                      }
+                    }
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
           Wrap(
             spacing: 12,
             runSpacing: 10,
@@ -4701,6 +5254,7 @@ class _FormState extends State<PrintFormScreen> {
         combine: m.combine,
         brand: brandVal.isNotEmpty ? brandVal : null,
         finish: finishVal.isNotEmpty ? finishVal : null,
+        spoolId: m.selectedSpoolId,
       ));
     }
 
@@ -4791,6 +5345,7 @@ class _FormState extends State<PrintFormScreen> {
             newM.grams,
             colorName: newM.colorName,
             colorValue: newM.color,
+            preferredItemId: newM.spoolId,
           );
           if (isLow) hasLowStockAlert = true;
         }
@@ -4836,6 +5391,7 @@ class _FormState extends State<PrintFormScreen> {
             newM.grams * totalPrinters,
             colorName: newM.colorName,
             colorValue: newM.color,
+            preferredItemId: newM.spoolId,
           );
           if (isLow) hasLowStockAlert = true;
         }
@@ -4903,6 +5459,7 @@ class _MaterialForm {
   final TextEditingController customFinish;
   int? color;
   bool combine;
+  String? selectedSpoolId;
 
   _MaterialForm(
     this.type,
@@ -4913,6 +5470,7 @@ class _MaterialForm {
     this.customType = '',
     String brandText = '',
     String finishText = '',
+    this.selectedSpoolId,
   })  : grams = TextEditingController(text: gramsText),
         customBrand = TextEditingController(),
         customFinish = TextEditingController() {
@@ -5144,11 +5702,43 @@ class _AnalyticsState extends State<AnalyticsScreen> {
   late final PrintViewModel vm;
   bool _ownsVm = false;
 
-  String _selectedPeriod = 'ACTUAL'; // 'ACTUAL', 'ANTERIOR', 'TODOS', o 'SEM_2026_2'
-  String? _selectedMonthKey; // ej. '2026-AGO'
-  int _metricIndex = 0; // 0 = Gramos, 1 = Piezas
+  // Filtro semestral: 'ACTUAL', 'ANTERIOR', 'TODOS' (Historial completo), o 'SEM_YYYY_S'
+  String _selectedPeriod = 'ACTUAL';
+  String? _selectedMonthKey;
+  int _metricIndex = 0; // 0 = Gramos, 1 = Piezas, 2 = Costo estimado
+  bool _compareWithPrevious = false;
+
+  // Inspector lateral deslizante (detalle de pieza)
+  _TopPieceStat? _inspectedPiece;
+
+  // Paleta de comandos tipo Spotlight
+  bool _showSpotlight = false;
+  final TextEditingController _spotlightCtrl = TextEditingController();
+  final FocusNode _keyboardFocusNode = FocusNode();
+  final FocusNode _spotlightFocusNode = FocusNode();
 
   bool get _isDarkMode => isVoxelDarkMode;
+
+  // Tokens de estilo SILM
+  Color get accentColor => _isDarkMode
+      ? const Color(0xFF409CFF)
+      : const Color(0xFF0071E3);
+  Color get cardBg => surfaceCard;
+  Color get cardBorderColor => borderSubtle;
+  Color get textPrimary => isVoxelDarkMode
+      ? const Color(0xFFF1F3F6)
+      : const Color(0xFF1D1D1F);
+  Color get textSecondary => isVoxelDarkMode
+      ? const Color(0xFFA7AFBD)
+      : const Color(0xFF7A7A7A);
+  Color get surfaceWindow => bgBase;
+  Color get dividerColor => borderSubtle;
+  Color get segmentedBg => _isDarkMode
+      ? const Color(0xFF242832)
+      : const Color(0xFFEBEBF0);
+  Color get segmentedActiveBg => _isDarkMode
+      ? const Color(0xFF1B1E25)
+      : const Color(0xFFFFFFFF);
 
   @override
   void initState() {
@@ -5164,20 +5754,69 @@ class _AnalyticsState extends State<AnalyticsScreen> {
   @override
   void dispose() {
     if (_ownsVm) vm.dispose();
+    _spotlightCtrl.dispose();
+    _keyboardFocusNode.dispose();
+    _spotlightFocusNode.dispose();
     super.dispose();
   }
-
-  AcademicSemesterInfo _getCurrentSemester(DateTime now) =>
-      AcademicSemesterInfo.getCurrent(now);
-
-  AcademicSemesterInfo _getPreviousSemester(DateTime now) =>
-      AcademicSemesterInfo.getPrevious(now);
 
   AcademicSemesterInfo _getActiveSemesterInfo() =>
       AcademicSemesterInfo.getActive(_selectedPeriod);
 
   List<AcademicSemesterInfo> _getAvailableSemesters() =>
       AcademicSemesterInfo.getAvailable(vm.allRecords);
+
+  AcademicSemesterInfo? _getComparativeSemesterInfo(AcademicSemesterInfo current) {
+    if (current.isAll) return null;
+    if (current.semNum == 2) {
+      return AcademicSemesterInfo.getSpecific(current.year, 1);
+    } else {
+      return AcademicSemesterInfo.getSpecific(current.year - 1, 2);
+    }
+  }
+
+  List<PrintRecord> _getComparativeRecords(AcademicSemesterInfo compSem) {
+    final all = vm.allRecords;
+    if (all.isEmpty) return [];
+    final startMs = compSem.startDate.millisecondsSinceEpoch;
+    final endMs = compSem.endDate.millisecondsSinceEpoch;
+    return all.where((r) => r.date >= startMs && r.date <= endMs).toList();
+  }
+
+  double _computeAvgCostPerGram(List<InventoryItem> items) {
+    if (items.isNotEmpty) {
+      double totalCost = 0;
+      double totalGrams = 0;
+      for (final it in items) {
+        if (it.stockInicial > 0 && it.price > 0) {
+          totalCost += it.price;
+          totalGrams += it.stockInicial;
+        }
+      }
+      if (totalGrams > 0) return totalCost / totalGrams;
+    }
+    return 0.45; // Costo estándar: $0.45 MXN/g (~$450 MXN bobina 1kg PLA)
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        if (_showSpotlight) {
+          setState(() {
+            _showSpotlight = false;
+            _spotlightCtrl.clear();
+          });
+        } else if (_inspectedPiece != null) {
+          setState(() => _inspectedPiece = null);
+        }
+      } else if (event.logicalKey == LogicalKeyboardKey.slash) {
+        if (!_showSpotlight) {
+          setState(() => _showSpotlight = true);
+          Future.microtask(() => _spotlightFocusNode.requestFocus());
+        }
+      }
+    }
+  }
 
   List<PrintRecord> _getFilteredRecords() {
     final all = vm.allRecords;
@@ -5281,31 +5920,41 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     if (widget.inventoryVm != null) {
       listenables.add(widget.inventoryVm!);
     }
+
     return AnimatedBuilder(
       animation: Listenable.merge(listenables),
       builder: (_, __) {
+        final records = _getFilteredRecords();
         final activeSem = _getActiveSemesterInfo();
-        final periodRecords = _getFilteredRecords();
-        final monthlyPoints = _getMonthlyPoints(periodRecords, activeSem);
+        final inventoryItems = widget.inventoryVm?.inventoryItems ?? [];
+        final avgCostPerGram = _computeAvgCostPerGram(inventoryItems);
+
+        // Puntos mensuales dentro del semestre activo
+        final monthlyPoints = _getMonthlyPoints(records, activeSem);
+
+        // Puntos mensuales del periodo comparativo (semestre anterior)
+        List<_MonthlyDataPoint>? comparativePoints;
+        final compSem = _getComparativeSemesterInfo(activeSem);
+        if (_compareWithPrevious && compSem != null) {
+          final compRecords = _getComparativeRecords(compSem);
+          comparativePoints = _getMonthlyPoints(compRecords, compSem);
+        }
 
         // Si hay un mes seleccionado, filtramos los datos de detalle
         final displayedRecords = _selectedMonthKey != null
-            ? periodRecords.where((r) {
+            ? records.where((r) {
                 final d = DateTime.fromMillisecondsSinceEpoch(r.date);
                 return '${d.year}-${_monthShort(d.month)}' == _selectedMonthKey;
               }).toList()
-            : periodRecords;
+            : records;
 
+        // Cálculos para KPIs y secciones
         final displayedGrams =
             displayedRecords.fold(0.0, (s, r) => s + r.totalGrams);
         final displayedPieces =
             displayedRecords.fold(0, (s, r) => s + r.cantidad);
         final spoolsUsed = displayedGrams / 1000.0;
 
-        // Stock de filamento en inventario
-        final inventoryItems = widget.inventoryVm?.inventoryItems ?? [];
-
-        // Desglose de materiales, colores, categorías y piezas
         final materialMap = <String, double>{};
         final colorMap = <String, double>{};
         final categoryMap = <String, double>{};
@@ -5350,336 +5999,390 @@ class _AnalyticsState extends State<AnalyticsScreen> {
         final topPieces = pieceMap.values.toList()
           ..sort((a, b) => b.totalGrams.compareTo(a.totalGrams));
 
-        String topMaterialStr = 'Sin datos';
-        if (materialMap.isNotEmpty) {
-          final sortedMats = materialMap.entries.toList()
-            ..sort((a, b) => b.value.compareTo(a.value));
-          final topMat = sortedMats.first;
-          final pct = displayedGrams > 0
-              ? (topMat.value / displayedGrams * 100).round()
-              : 0;
-          topMaterialStr = '${topMat.key} ($pct%)';
-        }
-
-        return Scaffold(
-          appBar: darkAppBar(
-            'ANÁLISIS DE PRODUCCIÓN',
-            widget.onToggleMenu ?? () => goBack(context),
-            leadingWidget:
-                widget.onToggleMenu != null ? const SidebarToggleIcon() : null,
-            leadingIcon: Icons.arrow_back,
-            onHoverEnter: widget.onHoverMenu,
-            hideLeading: widget.isPinned,
-            actions: [
-              // Selector Semestral en el AppBar
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: surfaceElevated,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: borderSubtle),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _periodButton(
-                      'ACTUAL',
-                      'SEM. ACTUAL',
-                      'Semestre Actual: ${_getCurrentSemester(DateTime.now()).term}',
-                    ),
-                    _periodButton(
-                      'ANTERIOR',
-                      'SEM. ANTERIOR',
-                      'Semestre Anterior: ${_getPreviousSemester(DateTime.now()).term}',
-                    ),
-                    _periodButton(
-                      'TODOS',
-                      'HISTORIAL',
-                      'Historial de todos los semestres',
-                    ),
-                    _semesterMenuButton(activeSem),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Tooltip(
-                message: 'Exportar informe',
-                child: IconButton(
-                  icon: const Icon(Icons.file_download_outlined, size: 20),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ExportScreen(
-                          vm: vm,
-                          inventoryVm: widget.inventoryVm,
+        // Panel de Análisis de Producción Integrado
+        return Focus(
+          focusNode: _keyboardFocusNode,
+          autofocus: true,
+          onKeyEvent: (node, event) {
+            _handleKeyEvent(event);
+            return KeyEventResult.ignored;
+          },
+          child: Scaffold(
+            backgroundColor: bgBase,
+            appBar: darkAppBar(
+              'ANÁLISIS DE PRODUCCIÓN',
+              widget.onToggleMenu ?? () => goBack(context),
+              leadingWidget: widget.onToggleMenu != null
+                  ? const SidebarToggleIcon()
+                  : null,
+              leadingIcon: Icons.arrow_back,
+              onHoverEnter: widget.onHoverMenu,
+              hideLeading: widget.isPinned,
+              actions: [
+                Builder(
+                  builder: (ctx) {
+                    final screenWidth = MediaQuery.sizeOf(ctx).width;
+                    final maxActionsWidth = math.max(100.0, screenWidth - 300);
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxActionsWidth),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildSemestralSegmentedControl(activeSem),
+                            const SizedBox(width: 8),
+                            _buildCompareToolbarButton(),
+                            const SizedBox(width: 8),
+                            _buildToolbarSearchBar(),
+                            const SizedBox(width: 8),
+                            _buildExportButton(context),
+                            const SizedBox(width: 14),
+                          ],
                         ),
                       ),
                     );
                   },
                 ),
-              ),
-              const SizedBox(width: 14),
-            ],
-          ),
-          backgroundColor: bgBase,
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-            children: [
-              // 1. CARDS OPERATIVAS COMPACTAS (KPIs con estética dark + neon green)
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final columns = constraints.maxWidth >= 1060
-                      ? 3
-                      : constraints.maxWidth >= 560
-                          ? 2
-                          : 1;
-                  final cardWidth =
-                      (constraints.maxWidth - (12 * (columns - 1))) / columns;
-
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      SizedBox(
-                        width: cardWidth,
-                        child: _kpiCard(
-                          title: 'MATERIAL CONSUMIDO',
-                          value:
-                              '${(displayedGrams / 1000.0).toStringAsFixed(2)} kg',
-                          subtitle:
-                              '${spoolsUsed.toStringAsFixed(1)} carretes est.',
-                          color: const Color(0xFF10B981),
-                          icon: Icons.scale_outlined,
-                          sparklinePattern: 0,
-                        ),
-                      ),
-                      SizedBox(
-                        width: cardWidth,
-                        child: _kpiCard(
-                          title: 'PIEZAS FABRICADAS',
-                          value: '$displayedPieces piezas',
-                          subtitle:
-                              '${displayedRecords.length} trabajos/órdenes',
-                          color: const Color(0xFF0EA5E9),
-                          icon: Icons.view_in_ar_outlined,
-                          sparklinePattern: 1,
-                        ),
-                      ),
-                      SizedBox(
-                        width: cardWidth,
-                        child: _kpiCard(
-                          title: 'MATERIAL MÁS USADO',
-                          value: topMaterialStr,
-                          subtitle: '${colorMap.length} colores aplicados',
-                          color: const Color(0xFFF59E0B),
-                          icon: Icons.palette_outlined,
-                          sparklinePattern: 2,
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-
-              if (_selectedMonthKey != null) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: const Color(0xFF10B981).withValues(alpha: 0.25),
-                      width: 0.8,
+              ],
+            ),
+            body: Stack(
+              children: [
+                ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+                  children: [
+                    // 1. CARDS OPERATIVAS COMPACTAS (2 KPIs)
+                    _buildKpiSection(
+                      displayedGrams: displayedGrams,
+                      spoolsUsed: spoolsUsed,
+                      displayedPieces: displayedPieces,
+                      recordCount: displayedRecords.length,
                     ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.school_outlined,
-                          size: 14, color: Color(0xFF10B981)),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Semestre ${activeSem.shortTerm} · Detalle del mes: $_selectedMonthKey',
-                        style: TextStyle(
-                          color: _isDarkMode
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFF059669),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const Spacer(),
-                      InkWell(
-                        onTap: () => setState(() => _selectedMonthKey = null),
-                        borderRadius: BorderRadius.circular(4),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+
+                    if (_selectedMonthKey != null) ...[
+                      const SizedBox(height: 10),
+                      _buildMonthFilterBanner(activeSem),
+                    ],
+
+                    const SizedBox(height: 14),
+
+                    // 2. GRÁFICA DE PRODUCCIÓN SEMESTRAL + CATEGORÍAS
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isSingleColumn =
+                            constraints.maxWidth < 950;
+                        if (isSingleColumn) {
+                          return Column(
                             children: [
-                              Text(
-                                'Quitar filtro de mes',
-                                style: TextStyle(
-                                  color: textSecondary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
+                              _buildEvolutionCard(
+                                points: monthlyPoints,
+                                comparativePoints:
+                                    comparativePoints,
+                                displayedGrams:
+                                    displayedGrams,
+                                displayedPieces:
+                                    displayedPieces,
+                                recordCount:
+                                    displayedRecords.length,
+                                activeSem: activeSem,
+                                compSem: compSem,
+                                avgCostPerGram:
+                                    avgCostPerGram,
+                              ),
+                              const SizedBox(height: 14),
+                              _buildCategoryCard(
+                                  categoryMap, displayedGrams),
+                            ],
+                          );
+                        }
+                        return IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _buildEvolutionCard(
+                                  points: monthlyPoints,
+                                  comparativePoints:
+                                      comparativePoints,
+                                  displayedGrams:
+                                      displayedGrams,
+                                  displayedPieces:
+                                      displayedPieces,
+                                  recordCount:
+                                      displayedRecords.length,
+                                  activeSem: activeSem,
+                                  compSem: compSem,
+                                  avgCostPerGram:
+                                    avgCostPerGram,
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              Icon(Icons.close_rounded,
-                                  size: 13, color: textSecondary),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildCategoryCard(
+                                  categoryMap,
+                                  displayedGrams,
+                                  fillHeight: true,
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // 3. PIEZAS CON MAYOR CONSUMO (INTERACTIVA) + MATERIALES Y COLORES
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isSingleColumn =
+                            constraints.maxWidth < 950;
+                        if (isSingleColumn) {
+                          return Column(
+                            children: [
+                              _buildTopPiecesCard(
+                                topPieces,
+                                displayedGrams,
+                                avgCostPerGram,
+                              ),
+                              const SizedBox(height: 14),
+                              _buildMaterialAndColorCard(
+                                materialMap,
+                                colorMap,
+                                displayedGrams,
+                                inventoryItems,
+                              ),
+                            ],
+                          );
+                        }
+                        return IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: _buildTopPiecesCard(
+                                  topPieces,
+                                  displayedGrams,
+                                  avgCostPerGram,
+                                  fillHeight: true,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child:
+                                    _buildMaterialAndColorCard(
+                                  materialMap,
+                                  colorMap,
+                                  displayedGrams,
+                                  inventoryItems,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
+
+                // 3. PANEL INSPECTOR DESLIZANTE DESDE LA DERECHA (~280ms)
+                _buildSlidingInspector(records, avgCostPerGram),
+
+                // 4. PALETA DE COMANDOS TIPO SPOTLIGHT
+                if (_showSpotlight)
+                  _buildSpotlightModal(
+                    topPieces: topPieces,
+                    categoryMap: categoryMap,
+                    colorMap: colorMap,
+                  ),
               ],
-
-              const SizedBox(height: 14),
-
-              // 2. SECCIÓN PRINCIPAL: GRÁFICA ONDA NEÓN (General Sale Activity) + CATEGORÍAS (Top Selling Products)
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isSingleColumn = constraints.maxWidth < 950;
-                  if (isSingleColumn) {
-                    return Column(
-                      children: [
-                        _buildEvolutionCard(
-                          points: monthlyPoints,
-                          displayedGrams: displayedGrams,
-                          displayedPieces: displayedPieces,
-                          recordCount: displayedRecords.length,
-                          topMaterialStr: topMaterialStr,
-                          spoolsUsed: spoolsUsed,
-                          activeSem: activeSem,
-                        ),
-                        const SizedBox(height: 14),
-                        _buildCategoryCard(categoryMap, displayedGrams),
-                      ],
-                    );
-                  }
-                  return IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: _buildEvolutionCard(
-                            points: monthlyPoints,
-                            displayedGrams: displayedGrams,
-                            displayedPieces: displayedPieces,
-                            recordCount: displayedRecords.length,
-                            topMaterialStr: topMaterialStr,
-                            spoolsUsed: spoolsUsed,
-                            activeSem: activeSem,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildCategoryCard(
-                            categoryMap,
-                            displayedGrams,
-                            fillHeight: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 14),
-
-              // 3. SECCIÓN SECUNDARIA: TOP TRANSACCIONES + CUSTOMER INTEREST
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isSingleColumn = constraints.maxWidth < 950;
-                  if (isSingleColumn) {
-                    return Column(
-                      children: [
-                        _buildTopPiecesCard(topPieces, displayedGrams),
-                        const SizedBox(height: 14),
-                        _buildMaterialAndColorCard(
-                          materialMap,
-                          colorMap,
-                          displayedGrams,
-                          inventoryItems,
-                        ),
-                      ],
-                    );
-                  }
-                  return IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: _buildTopPiecesCard(
-                            topPieces,
-                            displayedGrams,
-                            fillHeight: true,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          flex: 1,
-                          child: _buildMaterialAndColorCard(
-                            materialMap,
-                            colorMap,
-                            displayedGrams,
-                            inventoryItems,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
+            ),
           ),
         );
       },
     );
   }
 
-  // --- BOTONES DE SEMESTRE EN APP BAR ---
-  Widget _periodButton(String code, String label, String tooltip) {
-    final isSelected = _selectedPeriod == code;
-    final activeTextColor =
-        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
+  // --- BOTÓN EXPORTAR DEL TOOLBAR ---
+  Widget _buildExportButton(BuildContext context) {
+    return Tooltip(
+      message: 'Exportar informe del periodo',
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ExportScreen(
+                vm: vm,
+                inventoryVm: widget.inventoryVm,
+              ),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: segmentedBg,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: cardBorderColor, width: 0.8),
+          ),
+          child: Icon(
+            Icons.ios_share_rounded,
+            size: 15,
+            color: textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- BUSCADOR DEL TOOLBAR TIPO SPOTLIGHT ---
+  Widget _buildToolbarSearchBar() {
+    return Tooltip(
+      message: 'Buscar o ejecutar acción (Presiona "/")',
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _showSpotlight = true;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _spotlightFocusNode.requestFocus();
+          });
+        },
+        borderRadius: BorderRadius.circular(7),
+        child: Container(
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: segmentedBg,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: cardBorderColor, width: 0.8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.search_rounded, size: 14, color: textSecondary),
+              const SizedBox(width: 6),
+              Text(
+                'Buscar o ejecutar acción',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w400,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: _isDarkMode
+                      ? Colors.white.withValues(alpha: 0.1)
+                      : Colors.black.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '/',
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: '-apple-system',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- FILTRO DE PERIODO: SEMESTRAL (3 OPCIONES EXACTAS) ---
+  Widget _buildSemestralSegmentedControl(AcademicSemesterInfo activeSem) {
+    final isCur = _selectedPeriod == 'ACTUAL';
+    final isPrev = _selectedPeriod == 'ANTERIOR';
+    final isHist = !isCur && !isPrev;
+
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.all(2.5),
+      decoration: BoxDecoration(
+        color: segmentedBg,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: cardBorderColor, width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 1. "Sem. actual"
+          _segmentedButton(
+            label: 'Sem. actual',
+            isSelected: isCur,
+            tooltip: 'Semestre en curso (${activeSem.shortTerm})',
+            onTap: () {
+              setState(() {
+                _selectedPeriod = 'ACTUAL';
+                _selectedMonthKey = null;
+              });
+            },
+          ),
+          // 2. "Sem. anterior"
+          _segmentedButton(
+            label: 'Sem. anterior',
+            isSelected: isPrev,
+            tooltip: 'Semestre inmediato anterior',
+            onTap: () {
+              setState(() {
+                _selectedPeriod = 'ANTERIOR';
+                _selectedMonthKey = null;
+              });
+            },
+          ),
+          // 3. "Historial" (con selector emergente de todos los semestres)
+          _segmentedHistorialButton(isHist, activeSem),
+        ],
+      ),
+    );
+  }
+
+  Widget _segmentedButton({
+    required String label,
+    required bool isSelected,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
     return Tooltip(
       message: tooltip,
       child: InkWell(
-        onTap: () => setState(() {
-          _selectedPeriod = code;
-          _selectedMonthKey = null;
-        }),
-        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(5),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
           decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFF10B981).withValues(alpha: 0.12)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
-            border: isSelected
-                ? Border.all(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.4),
-                    width: 0.8,
-                  )
-                : Border.all(color: Colors.transparent, width: 0.8),
+            color: isSelected ? segmentedActiveBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(5),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 3,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
           ),
           child: Text(
             label,
             style: TextStyle(
-              color: isSelected ? activeTextColor : textSecondary,
-              fontSize: 10,
-              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-              letterSpacing: 0.3,
+              color: isSelected ? textPrimary : textSecondary,
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+              fontFamily: '-apple-system',
             ),
           ),
         ),
@@ -5687,800 +6390,124 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     );
   }
 
-  Widget _semesterMenuButton(AcademicSemesterInfo activeSem) {
-    final isCustom = _selectedPeriod.startsWith('SEM_');
+  Widget _segmentedHistorialButton(bool isHist, AcademicSemesterInfo activeSem) {
     return PopupMenuButton<String>(
-      tooltip: 'Seleccionar otro semestre universitario',
-      color: surfaceCard,
-      elevation: 10,
+      tooltip: 'Historial de semestres registrados',
+      color: cardBg,
+      elevation: 12,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: borderSubtle),
+        side: BorderSide(color: cardBorderColor, width: 0.8),
       ),
-      offset: const Offset(0, 36),
-      onSelected: (val) {
+      offset: const Offset(0, 32),
+      onSelected: (code) {
         setState(() {
-          _selectedPeriod = val;
+          _selectedPeriod = code;
           _selectedMonthKey = null;
         });
       },
-      itemBuilder: (context) => _buildSemesterMenuItems(),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        decoration: BoxDecoration(
-          color: isCustom
-              ? const Color(0xFF10B981).withValues(alpha: 0.12)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: isCustom
-              ? Border.all(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.5),
-                  width: 0.8,
-                )
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.calendar_month_outlined,
-              size: 13,
-              color: isCustom ? const Color(0xFF10B981) : textSecondary,
-            ),
-            const SizedBox(width: 2),
-            Icon(
-              Icons.arrow_drop_down,
-              size: 14,
-              color: isCustom ? const Color(0xFF10B981) : textSecondary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      itemBuilder: (context) {
+        final items = <PopupMenuEntry<String>>[];
 
-  Widget _semesterDropdownButton(AcademicSemesterInfo activeSem) {
-    final activeColor =
-        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
-    return PopupMenuButton<String>(
-      tooltip: 'Cambiar semestre universitario',
-      color: surfaceCard,
-      elevation: 10,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: borderSubtle),
-      ),
-      offset: const Offset(0, 34),
-      onSelected: (val) {
-        setState(() {
-          _selectedPeriod = val;
-          _selectedMonthKey = null;
-        });
-      },
-      itemBuilder: (context) => _buildSemesterMenuItems(),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: surfaceElevated,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: const Color(0xFF10B981).withValues(alpha: 0.3),
-            width: 0.8,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.school_outlined,
-              size: 12,
-              color: activeColor,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              activeSem.shortTerm,
-              style: TextStyle(
-                color: activeColor,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.3,
-              ),
-            ),
-            const SizedBox(width: 3),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 13,
-              color: textSecondary,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  List<PopupMenuEntry<String>> _buildSemesterMenuItems() {
-    final now = DateTime.now();
-    final current = _getCurrentSemester(now);
-    final previous = _getPreviousSemester(now);
-    final available = _getAvailableSemesters();
-
-    final items = <PopupMenuEntry<String>>[];
-
-    items.add(
-      PopupMenuItem<String>(
-        value: 'ACTUAL',
-        child: _buildSemesterMenuItem(
-          title: 'Semestre Actual',
-          subtitle: current.term,
-          isSelected: _selectedPeriod == 'ACTUAL',
-          icon: Icons.school_outlined,
-          color: const Color(0xFF10B981),
-        ),
-      ),
-    );
-
-    items.add(
-      PopupMenuItem<String>(
-        value: 'ANTERIOR',
-        child: _buildSemesterMenuItem(
-          title: 'Semestre Anterior',
-          subtitle: previous.term,
-          isSelected: _selectedPeriod == 'ANTERIOR',
-          icon: Icons.history_rounded,
-          color: const Color(0xFF0EA5E9),
-        ),
-      ),
-    );
-
-    items.add(
-      PopupMenuItem<String>(
-        value: 'TODOS',
-        child: _buildSemesterMenuItem(
-          title: 'Historial Semestral Completo',
-          subtitle: 'Todos los semestres registrados',
-          isSelected: _selectedPeriod == 'TODOS' || _selectedPeriod == 'TODO',
-          icon: Icons.auto_stories_outlined,
-          color: const Color(0xFFF59E0B),
-        ),
-      ),
-    );
-
-    items.add(
-      const PopupMenuDivider(height: 12),
-    );
-
-    for (final sem in available) {
-      items.add(
-        PopupMenuItem<String>(
-          value: sem.key,
-          child: _buildSemesterMenuItem(
-            title: sem.term,
-            subtitle: 'Periodo ${sem.shortTerm}',
-            isSelected: _selectedPeriod == sem.key,
-            icon: Icons.calendar_today_outlined,
-            color: sem.semNum == 2
-                ? const Color(0xFF10B981)
-                : const Color(0xFF0EA5E9),
-          ),
-        ),
-      );
-    }
-
-    return items;
-  }
-
-  Widget _buildSemesterMenuItem({
-    required String title,
-    required String subtitle,
-    required bool isSelected,
-    required IconData icon,
-    required Color color,
-  }) {
-    final activeTextColor =
-        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Icon(icon, size: 13, color: color),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: isSelected ? activeTextColor : textPrimary,
-                  fontSize: 11,
-                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: textMuted,
-                  fontSize: 9,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (isSelected) ...[
-          const SizedBox(width: 6),
-          Icon(Icons.check_circle_rounded, size: 14, color: activeTextColor),
-        ],
-      ],
-    );
-  }
-
-  // --- BOTÓN TRES PUNTOS [...] ESTILO MINIMALISTA ---
-  Widget _moreOptionsButton() {
-    return Container(
-      width: 26,
-      height: 26,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: surfaceElevated,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: borderSubtle),
-      ),
-      child: Icon(
-        Icons.more_horiz_rounded,
-        size: 15,
-        color: textSecondary,
-      ),
-    );
-  }
-
-  // --- TARJETA DE KPI ESTILO MINIMALISTA ULTRA MODERNO ---
-  Widget _kpiCard({
-    required String title,
-    required String value,
-    String? subtitle,
-    required Color color,
-    required IconData icon,
-    required int sparklinePattern,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: surfaceCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: color.withValues(alpha: 0.2),
-                width: 0.8,
-              ),
-            ),
-            child: Icon(icon, size: 17, color: color),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+        // Opción especial: "Historial semestral completo"
+        items.add(
+          PopupMenuItem<String>(
+            value: 'TODOS',
+            child: Row(
               children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: textSecondary,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  ),
+                Icon(
+                  Icons.all_inclusive_rounded,
+                  size: 14,
+                  color: _selectedPeriod == 'TODOS' ? accentColor : textSecondary,
                 ),
-                const SizedBox(height: 2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
+                const SizedBox(width: 8),
+                Expanded(
                   child: Text(
-                    value,
+                    'Historial semestral completo',
                     style: TextStyle(
-                      color: textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
+                      fontSize: 12,
+                      fontWeight: _selectedPeriod == 'TODOS'
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: _selectedPeriod == 'TODOS' ? accentColor : textPrimary,
+                      fontFamily: '-apple-system',
                     ),
                   ),
                 ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 4,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: color,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ],
+                if (_selectedPeriod == 'TODOS')
+                  Icon(Icons.check_rounded, size: 14, color: accentColor),
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          _buildMiniSparkline(color, sparklinePattern),
-        ],
-      ),
-    );
-  }
+        );
 
-  Widget _buildMiniSparkline(Color color, int pattern) {
-    const patterns = [
-      [0.35, 0.55, 0.40, 0.75, 0.60, 0.95, 0.70],
-      [0.30, 0.60, 0.45, 0.80, 0.65, 0.85, 1.00],
-      [0.40, 0.50, 0.65, 0.55, 0.75, 0.90, 0.85],
-    ];
-    final heights = patterns[pattern % patterns.length];
+        items.add(const PopupMenuDivider(height: 8));
 
-    return SizedBox(
-      width: 38,
-      height: 28,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: heights.map((h) {
-          return Container(
-            width: 3.5,
-            height: 28 * h,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.25 + (h * 0.75)),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
+        // Lista de semestres registrados (ordenados del más reciente al más antiguo)
+        final semesters = _getAvailableSemesters();
 
-  // --- TARJETA 1: TENDENCIA DE FABRICACIÓN (SPLINE DE ÁREA MINIMALISTA) ---
-  Widget _buildEvolutionCard({
-    required List<_MonthlyDataPoint> points,
-    required double displayedGrams,
-    required int displayedPieces,
-    required int recordCount,
-    required String topMaterialStr,
-    required double spoolsUsed,
-    required AcademicSemesterInfo activeSem,
-  }) {
-    final values = _metricIndex == 0
-        ? points.map((p) => p.grams).toList()
-        : points.map((p) => p.pieces.toDouble()).toList();
-
-    final maxVal =
-        values.isEmpty ? 1.0 : values.reduce((a, b) => a > b ? a : b);
-    final totalVal = values.fold(0.0, (s, v) => s + v);
-
-    int peakIndex = -1;
-    if (values.isNotEmpty && maxVal > 0) {
-      peakIndex = values.indexOf(maxVal);
-    }
-
-    final unitLabel = _metricIndex == 0 ? 'g' : 'piezas';
-    final actionColor =
-        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
-
-    return Container(
-      key: const ValueKey('analytics_evolution_card'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: surfaceCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 1. Cabecera limpia
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'TENDENCIA DE FABRICACIÓN',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      activeSem.term,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+        for (final sem in semesters) {
+          final isCurrentChoice = _selectedPeriod == sem.key;
+          items.add(
+            PopupMenuItem<String>(
+              value: sem.key,
+              child: Row(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: surfaceElevated,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: borderSubtle),
-                    ),
-                    child: Row(
+                  Icon(
+                    Icons.calendar_today_rounded,
+                    size: 13,
+                    color: isCurrentChoice ? accentColor : textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _metricToggleOption(
-                          title: 'Gramos',
-                          index: 0,
-                          icon: Icons.layers_outlined,
+                        Text(
+                          sem.term,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: isCurrentChoice
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                            color: isCurrentChoice ? accentColor : textPrimary,
+                            fontFamily: '-apple-system',
+                          ),
                         ),
-                        _metricToggleOption(
-                          title: 'Piezas',
-                          index: 1,
-                          icon: Icons.view_in_ar_outlined,
+                        Text(
+                          '${sem.shortTerm} · ${sem.year}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: textSecondary,
+                            fontFamily: '-apple-system',
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  _semesterDropdownButton(activeSem),
+                  if (isCurrentChoice)
+                    Icon(Icons.check_rounded, size: 14, color: accentColor),
                 ],
               ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // 2. Métrica de volumen y enlace al informe
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'VOLUMEN GENERADO',
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${totalVal >= 1000 ? (totalVal / 1000).toStringAsFixed(2) : totalVal.toStringAsFixed(0)} $unitLabel',
-                    style: TextStyle(
-                      color: textPrimary,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.6,
-                    ),
-                  ),
-                ],
-              ),
-              InkWell(
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ExportScreen(
-                        vm: vm,
-                        inventoryVm: widget.inventoryVm,
-                      ),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Ver informe',
-                        style: TextStyle(
-                          color: actionColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Icon(
-                        Icons.arrow_outward_rounded,
-                        size: 13,
-                        color: actionColor,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // 3. Gráfica Spline de Área Minimalista
-          SizedBox(
-            height: 105,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Eje Y sutil
-                SizedBox(
-                  width: 32,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: List.generate(4, (i) {
-                      final val = maxVal * (3 - i) / 3;
-                      return Text(
-                        val >= 1000
-                            ? '${(val / 1000).toStringAsFixed(0)}k'
-                            : val.toStringAsFixed(0),
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      );
-                    }),
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // Contenedor de la Onda Spline y Meses interactivos
-                Expanded(
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, boxConstraints) {
-                            final w = boxConstraints.maxWidth;
-                            final h = boxConstraints.maxHeight;
-
-                            double peakX = 0;
-                            double peakY = 0;
-                            if (peakIndex >= 0 &&
-                                points.isNotEmpty &&
-                                maxVal > 0) {
-                              final count = points.length;
-                              peakX = count <= 1
-                                  ? w / 2
-                                  : (peakIndex * (w / (count - 1)));
-                              peakY = h * 0.12;
-                            }
-
-                            return Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                Positioned.fill(
-                                  child: CustomPaint(
-                                    painter: _MinimalAreaChartPainter(
-                                      values: values,
-                                      maxVal: maxVal,
-                                      peakIndex: peakIndex,
-                                      isDark: _isDarkMode,
-                                    ),
-                                  ),
-                                ),
-
-                                // Badge flotante en el pico
-                                if (peakIndex >= 0 && maxVal > 0)
-                                  Positioned(
-                                    left: (peakX - 26).clamp(0.0, w - 52),
-                                    top: (peakY - 18).clamp(0.0, h),
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFF59E0B),
-                                        borderRadius: BorderRadius.circular(4),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: const Color(0xFFF59E0B)
-                                                .withValues(alpha: 0.35),
-                                            blurRadius: 6,
-                                          )
-                                        ],
-                                      ),
-                                      child: Text(
-                                        maxVal >= 1000
-                                            ? '${(maxVal / 1000).toStringAsFixed(1)}k $unitLabel'
-                                            : '${maxVal.toStringAsFixed(0)} $unitLabel',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                // Detector de clics en la gráfica
-                                Positioned.fill(
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: points.map((p) {
-                                      final pointKey = '${p.year}-${p.label}';
-                                      return Expanded(
-                                        child: InkWell(
-                                          onTap: () {
-                                            setState(() {
-                                              if (_selectedMonthKey ==
-                                                  pointKey) {
-                                                _selectedMonthKey = null;
-                                              } else {
-                                                _selectedMonthKey = pointKey;
-                                              }
-                                            });
-                                          },
-                                          hoverColor: const Color(0xFF10B981)
-                                              .withValues(alpha: 0.05),
-                                          child: const SizedBox.expand(),
-                                        ),
-                                      );
-                                    }).toList(),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      // Pills interactivos de meses en el eje X
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: points.map((p) {
-                          final pointKey = '${p.year}-${p.label}';
-                          final isSelected = _selectedMonthKey == pointKey;
-                          final activeColor = _isDarkMode
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFF059669);
-
-                          return InkWell(
-                            onTap: () {
-                              setState(() {
-                                if (_selectedMonthKey == pointKey) {
-                                  _selectedMonthKey = null;
-                                } else {
-                                  _selectedMonthKey = pointKey;
-                                }
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(4),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? const Color(0xFF10B981)
-                                        .withValues(alpha: 0.12)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(4),
-                                border: isSelected
-                                    ? Border.all(
-                                        color: const Color(0xFF10B981)
-                                            .withValues(alpha: 0.35),
-                                        width: 0.8,
-                                      )
-                                    : null,
-                              ),
-                              child: Text(
-                                p.label,
-                                style: TextStyle(
-                                  color:
-                                      isSelected ? activeColor : textSecondary,
-                                  fontSize: 9,
-                                  fontWeight: isSelected
-                                      ? FontWeight.w800
-                                      : FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          );
+        }
 
-  Widget _metricToggleOption({
-    required String title,
-    required int index,
-    required IconData icon,
-  }) {
-    final isSelected = _metricIndex == index;
-    final activeColor =
-        _isDarkMode ? const Color(0xFF10B981) : const Color(0xFF059669);
-    return InkWell(
-      onTap: () => setState(() => _metricIndex = index),
-      borderRadius: BorderRadius.circular(6),
+        return items;
+      },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
         decoration: BoxDecoration(
-          color: isSelected ? surfaceCard : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: isSelected
-              ? Border.all(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.35),
-                  width: 0.8,
-                )
-              : null,
-          boxShadow: isSelected
+          color: isHist ? segmentedActiveBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(5),
+          boxShadow: isHist
               ? [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 4,
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 3,
                     offset: const Offset(0, 1),
                   ),
                 ]
@@ -6489,19 +6516,24 @@ class _AnalyticsState extends State<AnalyticsScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 12,
-              color: isSelected ? activeColor : textSecondary,
+            Text(
+              isHist && _selectedPeriod != 'TODOS'
+                  ? 'Historial (${_getActiveSemesterInfo().shortTerm})'
+                  : (isHist && _selectedPeriod == 'TODOS'
+                      ? 'Historial completo'
+                      : 'Historial'),
+              style: TextStyle(
+                color: isHist ? textPrimary : textSecondary,
+                fontSize: 11,
+                fontWeight: isHist ? FontWeight.w600 : FontWeight.w500,
+                fontFamily: '-apple-system',
+              ),
             ),
             const SizedBox(width: 4),
-            Text(
-              title,
-              style: TextStyle(
-                color: isSelected ? textPrimary : textSecondary,
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              ),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 13,
+              color: isHist ? textPrimary : textSecondary,
             ),
           ],
         ),
@@ -6509,865 +6541,1839 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     );
   }
 
-  // --- TARJETA 2: CATEGORÍAS DE USO (MINIMALISTA CON BARRAS DE PROGRESO) ---
-  Widget _buildCategoryCard(
-    Map<String, double> categories,
-    double totalGrams, {
-    bool fillHeight = false,
-  }) {
-    final entries = categories.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    const categoryColors = [
-      Color(0xFF10B981), // Emerald
-      Color(0xFF0EA5E9), // Cyan
-      Color(0xFFF59E0B), // Amber
-      Color(0xFF8B5CF6), // Violet
-    ];
-
-    return Container(
-      key: const ValueKey('analytics_category_card'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-      decoration: BoxDecoration(
-        color: surfaceCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+  // --- BOTÓN COMPARAR PERIODO ANTERIOR ---
+  Widget _buildCompareToolbarButton() {
+    return Tooltip(
+      message: 'Superponer datos del periodo anterior en la gráfica',
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _compareWithPrevious = !_compareWithPrevious;
+          });
+        },
+        borderRadius: BorderRadius.circular(7),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 9),
+          decoration: BoxDecoration(
+            color: _compareWithPrevious
+                ? accentColor.withValues(alpha: 0.16)
+                : segmentedBg,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(
+              color: _compareWithPrevious
+                  ? accentColor.withValues(alpha: 0.6)
+                  : cardBorderColor,
+              width: 0.8,
+            ),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  'CATEGORÍAS DE USO',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
+              Icon(
+                Icons.compare_arrows_rounded,
+                size: 14,
+                color: _compareWithPrevious ? accentColor : textSecondary,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'Comparar periodo anterior',
+                style: TextStyle(
+                  color: _compareWithPrevious ? accentColor : textSecondary,
+                  fontSize: 11,
+                  fontWeight:
+                      _compareWithPrevious ? FontWeight.w700 : FontWeight.w500,
+                  fontFamily: '-apple-system',
                 ),
               ),
-              const SizedBox(width: 8),
-              _moreOptionsButton(),
             ],
           ),
-          const SizedBox(height: 10),
-          if (entries.isEmpty)
-            fillHeight
-                ? Expanded(
-                    child: Center(
-                      child: Text(
-                        'Sin datos',
-                        style: TextStyle(color: textSecondary, fontSize: 11),
-                      ),
-                    ),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                      child: Text(
-                        'Sin datos',
-                        style: TextStyle(color: textSecondary, fontSize: 11),
-                      ),
-                    ),
-                  )
-          else
-            Column(
-              children: entries.take(3).toList().asMap().entries.map((item) {
-                final idx = item.key;
-                final entry = item.value;
-                final color = categoryColors[idx % categoryColors.length];
-                final pct = totalGrams > 0 ? (entry.value / totalGrams) : 0.0;
-
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: surfaceElevated,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: borderSubtle),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Icon(
-                              _categoryIcon(entry.key),
-                              size: 15,
-                              color: color,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              entry.key,
-                              style: TextStyle(
-                                color: textPrimary,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${entry.value.toStringAsFixed(1)} g',
-                            style: TextStyle(
-                              color: textPrimary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '(${(pct * 100).toStringAsFixed(0)}%)',
-                            style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(2),
-                        child: LinearProgressIndicator(
-                          value: pct.clamp(0.0, 1.0),
-                          minHeight: 4,
-                          backgroundColor: borderSubtle,
-                          valueColor: AlwaysStoppedAnimation<Color>(color),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-        ],
+        ),
       ),
     );
   }
 
-  IconData _categoryIcon(String name) {
-    final lower = name.toLowerCase();
-    if (lower.contains('arte') || lower.contains('decor')) {
-      return Icons.brush_rounded;
-    }
-    if (lower.contains('repuesto')) {
-      return Icons.build_rounded;
-    }
-    if (lower.contains('prototipo')) {
-      return Icons.biotech_rounded;
-    }
-    if (lower.contains('funcional')) {
-      return Icons.precision_manufacturing_rounded;
-    }
-    return Icons.widgets_rounded;
+
+  // --- SECCIÓN DE KPIS: 2 TARJETAS (MATERIAL, PIEZAS) ---
+  Widget _buildKpiSection({
+    required double displayedGrams,
+    required double spoolsUsed,
+    required int displayedPieces,
+    required int recordCount,
+  }) {
+    final gramsStr = displayedGrams >= 1000
+        ? '${(displayedGrams / 1000).toStringAsFixed(2)} kg'
+        : '${displayedGrams.toStringAsFixed(1)} g';
+
+    return Row(
+      children: [
+        // 1. Material consumido
+        Expanded(
+          child: _kpiCard(
+            title: 'MATERIAL CONSUMIDO',
+            value: gramsStr,
+            subtitle: 'en $recordCount impresiones (${spoolsUsed.toStringAsFixed(2)} bobinas)',
+            icon: Icons.grain_rounded,
+            accentTint: const Color(0xFF0071E3),
+          ),
+        ),
+        const SizedBox(width: 14),
+
+        // 2. Piezas fabricadas
+        Expanded(
+          child: _kpiCard(
+            title: 'PIEZAS FABRICADAS',
+            value: displayedPieces.toString(),
+            subtitle: 'unidades terminadas',
+            icon: Icons.layers_rounded,
+            accentTint: const Color(0xFF34C759),
+          ),
+        ),
+      ],
+    );
   }
 
-  // --- TARJETA 3: IMPRESIONES CON MAYOR CONSUMO (TABLA MINIMALISTA) ---
-  Widget _buildTopPiecesCard(
-    List<_TopPieceStat> topPieces,
-    double totalGrams, {
-    bool fillHeight = false,
+  Widget _kpiCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color accentTint,
   }) {
     return Container(
-      key: const ValueKey('analytics_top_pieces_card'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: surfaceCard,
+        color: cardBg,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: cardBorderColor, width: 1),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  'IMPRESIONES CON MAYOR CONSUMO',
-                  overflow: TextOverflow.ellipsis,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    fontFamily: '-apple-system',
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
                   style: TextStyle(
                     color: textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: '-apple-system',
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              _moreOptionsButton(),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (topPieces.isEmpty)
-            fillHeight
-                ? Expanded(
-                    child: Center(
-                      child: Text(
-                        'Sin datos',
-                        style: TextStyle(color: textSecondary, fontSize: 11),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                      child: Text(
-                        'Sin datos',
-                        style: TextStyle(color: textSecondary, fontSize: 11),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  )
-          else ...[
-            // Encabezados
-            Row(
-              children: [
-                Expanded(
-                  flex: 4,
-                  child: Text(
-                    'PIEZA',
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    'CANTIDAD',
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    'CONSUMO',
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'ESTADO',
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
+                const SizedBox(height: 3),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 11,
+                    fontFamily: '-apple-system',
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Divider(color: borderSubtle, height: 1),
-            const SizedBox(height: 6),
-
-            // Filas
-            Column(
-              children: topPieces.take(4).toList().asMap().entries.map((e) {
-                final rank = e.key + 1;
-                final piece = e.value;
-                final isEven = rank % 2 == 0;
-
-                final statusText = isEven ? 'En proceso' : 'Listo';
-                final statusColor = isEven
-                    ? const Color(0xFFF59E0B)
-                    : const Color(0xFF10B981);
-
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.5),
-                  child: Row(
-                    children: [
-                      // Rank y nombre
-                      Expanded(
-                        flex: 4,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: surfaceElevated,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: borderSubtle),
-                              ),
-                              child: Text(
-                                '#0$rank',
-                                style: TextStyle(
-                                  color: textSecondary,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                piece.name,
-                                style: TextStyle(
-                                  color: textPrimary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Cantidad
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          '${piece.totalUnits} uds',
-                          style: TextStyle(
-                            color: textSecondary,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      // Consumo
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          '${piece.totalGrams.toStringAsFixed(1)} g',
-                          style: TextStyle(
-                            color: textPrimary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      // Estado
-                      Expanded(
-                        flex: 2,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: statusColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(
-                                color: statusColor.withValues(alpha: 0.3),
-                                width: 0.8,
-                              ),
-                            ),
-                            child: Text(
-                              statusText,
-                              style: TextStyle(
-                                color: statusColor,
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+          ),
+          Container(
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: accentTint.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
             ),
-          ],
+            child: Icon(icon, size: 20, color: accentTint),
+          ),
         ],
       ),
     );
   }
 
-  // --- TARJETA 4: MATERIALES Y COLORES (BARRA SEGMENTADA Y PALETA REAL) ---
-  Widget _buildMaterialAndColorCard(
-    Map<String, double> materials,
-    Map<String, double> colors,
-    double totalGrams,
-    List<InventoryItem> inventoryItems,
-  ) {
-    final matEntries = materials.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final colEntries = colors.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    const matColors = [
-      Color(0xFF10B981), // PLA - Cyber Emerald
-      Color(0xFF0EA5E9), // PETG - Cyber Cyan
-      Color(0xFFF59E0B), // ABS - Cyber Amber
-      Color(0xFF8B5CF6), // Otros - Cyber Violet
-    ];
+  // --- BANNER DE MES FILTRADO ---
+  Widget _buildMonthFilterBanner(AcademicSemesterInfo activeSem) {
+    if (_selectedMonthKey == null) return const SizedBox.shrink();
 
     return Container(
-      key: const ValueKey('analytics_material_color_card'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: surfaceCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderSubtle),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+        color: accentColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accentColor.withValues(alpha: 0.3), width: 1),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.filter_alt_rounded, size: 15, color: accentColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Filtrado por mes: $_selectedMonthKey. Toda la información refleja solo este periodo.',
+              style: TextStyle(
+                color: textPrimary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                fontFamily: '-apple-system',
+              ),
+            ),
+          ),
+          InkWell(
+            onTap: () => setState(() => _selectedMonthKey = null),
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: cardBorderColor, width: 0.8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.close_rounded, size: 12, color: textSecondary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Restablecer',
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  // --- TARJETA 1: EVOLUCIÓN / PRODUCCIÓN MENSUAL ---
+  Widget _buildEvolutionCard({
+    required List<_MonthlyDataPoint> points,
+    required List<_MonthlyDataPoint>? comparativePoints,
+    required double displayedGrams,
+    required int displayedPieces,
+    required int recordCount,
+    required AcademicSemesterInfo activeSem,
+    required AcademicSemesterInfo? compSem,
+    required double avgCostPerGram,
+  }) {
+    // Determinar mes pico
+    int peakIndex = -1;
+    double maxVal = 0;
+    for (int i = 0; i < points.length; i++) {
+      final val = _metricIndex == 0 ? points[i].grams : points[i].pieces.toDouble();
+      if (val > maxVal) {
+        maxVal = val;
+        peakIndex = i;
+      }
+    }
+
+    final peakName = peakIndex >= 0 ? points[peakIndex].label : '';
+    final peakValFormatted = _metricIndex == 0
+        ? '${maxVal.toStringAsFixed(1)} g'
+        : '${maxVal.toInt()} uds';
+
+    return Container(
+      key: const ValueKey('analytics_evolution_card'),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cardBorderColor, width: 1),
+      ),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header de la tarjeta
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(
-                child: Text(
-                  'MATERIALES Y COLORES',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                  ),
+              Text(
+                'PRODUCCIÓN MENSUAL',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  fontFamily: '-apple-system',
                 ),
               ),
               const SizedBox(width: 8),
-              _moreOptionsButton(),
-            ],
-          ),
-          const SizedBox(height: 8),
 
-          // Barra de distribución de material (reemplaza el mapa roto)
-          if (matEntries.isNotEmpty && totalGrams > 0) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: SizedBox(
-                height: 7,
-                child: Row(
-                  children: matEntries.asMap().entries.map((item) {
-                    final idx = item.key;
-                    final entry = item.value;
-                    final color = matColors[idx % matColors.length];
-                    final flex = ((entry.value / totalGrams) * 1000).round();
-                    if (flex <= 0) return const SizedBox.shrink();
-                    return Expanded(
-                      flex: flex,
-                      child: Container(
-                        color: color,
-                        margin: const EdgeInsets.symmetric(horizontal: 0.5),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: matEntries.take(4).toList().asMap().entries.map((item) {
-                final idx = item.key;
-                final entry = item.value;
-                final color = matColors[idx % matColors.length];
-                final pct = (entry.value / totalGrams) * 100;
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: color,
-                      ),
+              // Resaltado visual del mes con mayor producción
+              if (peakIndex >= 0 && maxVal > 0) ...[
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF34C759).withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: const Color(0xFF34C759).withValues(alpha: 0.35),
+                      width: 0.7,
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${entry.key} ${pct.toStringAsFixed(0)}%',
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: 9.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 8),
-          ],
-
-          // 1. Tipos de filamento
-          Text(
-            'TIPOS DE FILAMENTO',
-            style: TextStyle(
-              color: textSecondary,
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 5),
-          if (matEntries.isEmpty)
-            Text('Sin datos',
-                style: TextStyle(color: textSecondary, fontSize: 11))
-          else
-            Column(
-              children:
-                  matEntries.take(3).toList().asMap().entries.map((item) {
-                final idx = item.key;
-                final m = item.value;
-                final color = matColors[idx % matColors.length];
-                final pct = totalGrams > 0 ? (m.value / totalGrams) : 0.0;
-                final stockGrams = inventoryItems
-                    .where((i) =>
-                        i.material.trim().toUpperCase() ==
-                        m.key.trim().toUpperCase())
-                    .fold(0.0, (s, i) => s + i.stockActual);
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
+                  ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: color.withValues(alpha: 0.3),
-                            width: 0.8,
-                          ),
-                        ),
-                        child: Text(
-                          m.key,
-                          style: TextStyle(
-                            color: color,
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${m.value.toStringAsFixed(1)} g',
-                        style: TextStyle(
-                          color: textPrimary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                      const Icon(Icons.trending_up_rounded,
+                          size: 11, color: Color(0xFF34C759)),
                       const SizedBox(width: 4),
                       Text(
-                        '(${(pct * 100).toStringAsFixed(0)}%)',
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w500,
+                        'Pico: $peakName ($peakValFormatted)',
+                        style: const TextStyle(
+                          color: Color(0xFF34C759),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: '-apple-system',
                         ),
                       ),
-                      const Spacer(),
-                      if (inventoryItems.isNotEmpty)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: stockGrams > 0
-                                ? surfaceElevated
-                                : semanticWarning.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: stockGrams > 0
-                                  ? borderSubtle
-                                  : semanticWarning.withValues(alpha: 0.3),
-                              width: 0.8,
-                            ),
-                          ),
-                          child: Text(
-                            stockGrams > 0
-                                ? 'Stock: ${stockGrams >= 1000 ? '${(stockGrams / 1000).toStringAsFixed(1)} kg' : '${stockGrams.toInt()} g'}'
-                                : 'Sin stock',
-                            style: TextStyle(
-                              color: stockGrams > 0
-                                  ? textSecondary
-                                  : semanticWarning,
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
                     ],
                   ),
-                );
-              }).toList(),
-            ),
+                ),
+              ],
 
-          const SizedBox(height: 6),
-          Divider(color: borderSubtle, height: 1),
-          const SizedBox(height: 6),
+              const Spacer(),
 
-          // 2. Colores más utilizados
-          Text(
-            'COLORES MÁS UTILIZADOS',
-            style: TextStyle(
-              color: textSecondary,
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 5),
-          if (colEntries.isEmpty)
-            Text('Sin datos',
-                style: TextStyle(color: textSecondary, fontSize: 11))
-          else
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: colEntries.take(6).map((c) {
-                final colObj = findVoxelColor(name: c.key);
-                final pct = totalGrams > 0 ? (c.value / totalGrams) : 0.0;
-
-                return Container(
+              // Indicador de comparativa activa
+              if (_compareWithPrevious && compSem != null) ...[
+                Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  margin: const EdgeInsets.only(right: 8),
                   decoration: BoxDecoration(
-                    color: surfaceElevated,
+                    color: Colors.amber.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(5),
-                    border: Border.all(color: borderSubtle),
+                    border: Border.all(
+                      color: Colors.amber.withValues(alpha: 0.4),
+                      width: 0.7,
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
+                        width: 7,
+                        height: 7,
+                        decoration: const BoxDecoration(
+                          color: Colors.amber,
                           shape: BoxShape.circle,
-                          color: colObj.color,
-                          border: Border.all(
-                            color: borderStrong,
-                            width: 0.8,
-                          ),
                         ),
                       ),
                       const SizedBox(width: 5),
                       Text(
-                        c.key,
+                        'vs. ${compSem.shortTerm}',
                         style: TextStyle(
-                          color: textPrimary,
-                          fontSize: 9.5,
+                          color: _isDarkMode
+                              ? Colors.amber.shade300
+                              : Colors.amber.shade900,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${c.value.toStringAsFixed(0)} g',
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 8.5,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        '(${(pct * 100).toStringAsFixed(0)}%)',
-                        style: TextStyle(
-                          color: textMuted,
-                          fontSize: 8.5,
+                          fontFamily: '-apple-system',
                         ),
                       ),
                     ],
                   ),
-                );
-              }).toList(),
+                ),
+              ],
+
+              // Toggle selector: Material (g) vs Piezas
+              Container(
+                height: 24,
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: segmentedBg,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: cardBorderColor, width: 0.7),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _metricOptionButton(0, 'Material (g)'),
+                    _metricOptionButton(1, 'Piezas'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Gráfica de producción mensual con accesibilidad aria-label
+          Semantics(
+            label:
+                'Gráfica de producción mensual del periodo. Mes de mayor consumo: $peakName con $peakValFormatted.',
+            child: _buildChartCanvas(
+              points: points,
+              compPoints: comparativePoints ?? [],
+              peakIndex: peakIndex,
+              maxVal: maxVal,
+              isAllHistory: activeSem.isAll,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metricOptionButton(int index, String label) {
+    final isSel = _metricIndex == index;
+    return InkWell(
+      onTap: () => setState(() => _metricIndex = index),
+      borderRadius: BorderRadius.circular(4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: isSel ? segmentedActiveBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          boxShadow: isSel
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSel ? textPrimary : textSecondary,
+            fontSize: 10,
+            fontWeight: isSel ? FontWeight.w600 : FontWeight.w500,
+            fontFamily: '-apple-system',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChartCanvas({
+    required List<_MonthlyDataPoint> points,
+    required List<_MonthlyDataPoint> compPoints,
+    required int peakIndex,
+    required double maxVal,
+    required bool isAllHistory,
+  }) {
+    if (points.isEmpty) {
+      return Container(
+        height: 160,
+        alignment: Alignment.center,
+        child: Text(
+          'Sin datos',
+          style: TextStyle(color: textSecondary, fontSize: 12),
+        ),
+      );
+    }
+
+    // Si es historial completo con muchos meses, usamos scroll horizontal para no comprimir barras
+    final minWidth = isAllHistory ? math.max(500.0, points.length * 68.0) : 0.0;
+
+    Widget chartWidget = SizedBox(
+      height: 160,
+      width: isAllHistory ? minWidth : double.infinity,
+      child: CustomPaint(
+        painter: _MacProductionChartPainter(
+          points: points,
+          compPoints: compPoints,
+          metricIndex: _metricIndex,
+          peakIndex: peakIndex,
+          maxVal: maxVal,
+          isDark: _isDarkMode,
+          accentColor: accentColor,
+          selectedMonthKey: _selectedMonthKey,
+        ),
+      ),
+    );
+
+    if (isAllHistory && points.length > 6) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: chartWidget,
+      );
+    }
+
+    return chartWidget;
+  }
+
+  // --- TARJETA 2: CATEGORÍAS DE USO ---
+  Widget _buildCategoryCard(
+    Map<String, double> categoryMap,
+    double totalGrams, {
+    bool fillHeight = false,
+  }) {
+    final sortedCats = categoryMap.keys.toList()
+      ..sort((a, b) => categoryMap[b]!.compareTo(categoryMap[a]!));
+
+    return Container(
+      key: const ValueKey('analytics_category_card'),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cardBorderColor, width: 1),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Text(
+                'CATEGORÍAS DE USO',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${sortedCats.length} categorías',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 11,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          if (sortedCats.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  'Sin datos',
+                  style: TextStyle(color: textSecondary, fontSize: 12),
+                ),
+              ),
+            )
+          else
+            for (final cat in sortedCats.take(5)) ...[
+              Builder(
+                builder: (context) {
+                  final grams = categoryMap[cat]!;
+                  final pct = totalGrams > 0 ? (grams / totalGrams) : 0.0;
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                cat,
+                                style: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  fontFamily: '-apple-system',
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${(pct * 100).toStringAsFixed(1)}% · ${grams.toStringAsFixed(1)} g',
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 11,
+                                fontFamily: '-apple-system',
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: LinearProgressIndicator(
+                            value: pct.clamp(0.0, 1.0),
+                            backgroundColor: segmentedBg,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              accentColor.withValues(alpha: 0.85),
+                            ),
+                            minHeight: 5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+        ],
+      ),
+    );
+  }
+
+  // --- TARJETA 3: PIEZAS CON MAYOR CONSUMO (INTERACTIVA: ABRE INSPECTOR) ---
+  Widget _buildTopPiecesCard(
+    List<_TopPieceStat> topPieces,
+    double totalGrams,
+    double avgCostPerGram, {
+    bool fillHeight = false,
+  }) {
+    return Container(
+      key: const ValueKey('analytics_top_pieces_card'),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cardBorderColor, width: 1),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'IMPRESIONES CON MAYOR CONSUMO',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                    fontFamily: '-apple-system',
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Clic para inspeccionar',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 10.5,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          if (topPieces.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  'Sin datos',
+                  style: TextStyle(color: textSecondary, fontSize: 12),
+                ),
+              ),
+            )
+          else
+            for (int i = 0; i < math.min(5, topPieces.length); i++) ...[
+              Builder(
+                builder: (context) {
+                  final item = topPieces[i];
+                  final isInspected = _inspectedPiece?.name == item.name;
+
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        _inspectedPiece = item;
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: isInspected
+                            ? accentColor.withValues(alpha: 0.12)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 20,
+                            alignment: Alignment.center,
+                            child: Text(
+                              '${i + 1}',
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: '-apple-system',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              item.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: textPrimary,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: '-apple-system',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${item.totalUnits} uds · ${item.totalGrams.toStringAsFixed(1)} g',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 11,
+                              fontFamily: '-apple-system',
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 14,
+                            color: textSecondary,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+        ],
+      ),
+    );
+  }
+
+  // --- TARJETA 4: MATERIALES Y COLORES MÁS USADOS ---
+  Widget _buildMaterialAndColorCard(
+    Map<String, double> materialMap,
+    Map<String, double> colorMap,
+    double totalGrams,
+    List<InventoryItem> inventoryItems,
+  ) {
+    final sortedMats = materialMap.keys.toList()
+      ..sort((a, b) => materialMap[b]!.compareTo(materialMap[a]!));
+    final sortedColors = colorMap.keys.toList()
+      ..sort((a, b) => colorMap[b]!.compareTo(colorMap[a]!));
+
+    return Container(
+      key: const ValueKey('analytics_material_color_card'),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cardBorderColor, width: 1),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'MATERIALES Y COLORES',
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              fontFamily: '-apple-system',
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // 1. Barra segmentada de materiales (tipo barra de almacenamiento macOS)
+          if (sortedMats.isNotEmpty && totalGrams > 0) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: SizedBox(
+                height: 10,
+                child: Row(
+                  children: [
+                    for (int i = 0; i < sortedMats.length; i++) ...[
+                      Builder(
+                        builder: (context) {
+                          final mName = sortedMats[i];
+                          final g = materialMap[mName]!;
+                          final ratio = (g / totalGrams).clamp(0.02, 1.0);
+                          final palette = [
+                            accentColor,
+                            const Color(0xFF34C759),
+                            const Color(0xFFFF9500),
+                            const Color(0xFFAF52DE),
+                            const Color(0xFFFF2D55),
+                          ];
+                          final c = palette[i % palette.length];
+
+                          return Expanded(
+                            flex: (ratio * 100).toInt(),
+                            child: Tooltip(
+                              message:
+                                  '$mName: ${g.toStringAsFixed(1)}g (${(ratio * 100).toStringAsFixed(1)}%)',
+                              child: Container(
+                                color: c,
+                                margin: const EdgeInsets.symmetric(horizontal: 0.5),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Leyenda de materiales
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: [
+                for (int i = 0; i < math.min(4, sortedMats.length); i++) ...[
+                  Builder(
+                    builder: (context) {
+                      final mName = sortedMats[i];
+                      final g = materialMap[mName]!;
+                      final pct = (g / totalGrams) * 100;
+                      final palette = [
+                        accentColor,
+                        const Color(0xFF34C759),
+                        const Color(0xFFFF9500),
+                        const Color(0xFFAF52DE),
+                      ];
+                      final c = palette[i % palette.length];
+
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              color: c,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$mName (${pct.toStringAsFixed(0)}%)',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 10.5,
+                              fontFamily: '-apple-system',
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ],
+          const SizedBox(height: 12),
+
+          // 2. Colores más usados con swatches circulares
+          Text(
+            'Colores más utilizados',
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              fontFamily: '-apple-system',
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          if (sortedColors.isEmpty)
+            Text('Sin datos',
+                style: TextStyle(color: textSecondary, fontSize: 11))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final cName in sortedColors.take(6)) ...[
+                  Builder(
+                    builder: (context) {
+                      final g = colorMap[cName]!;
+                      final colObj = findVoxelColor(name: cName);
+                      final swatchColor = Color(colObj.value);
+
+                      return Tooltip(
+                        message: '$cName: ${g.toStringAsFixed(1)} g',
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: segmentedBg,
+                            borderRadius: BorderRadius.circular(6),
+                            border:
+                                Border.all(color: cardBorderColor, width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 11,
+                                height: 11,
+                                decoration: BoxDecoration(
+                                  color: swatchColor,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.black.withValues(alpha: 0.2),
+                                    width: 0.6,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                cName,
+                                style: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w500,
+                                  fontFamily: '-apple-system',
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${g.toStringAsFixed(0)}g',
+                                style: TextStyle(
+                                  color: textSecondary,
+                                  fontSize: 9.5,
+                                  fontFamily: '-apple-system',
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures()
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ],
             ),
         ],
+      ),
+    );
+  }
+
+  // --- PANEL LATERAL DESLIZANTE (INSPECTOR DE PIEZA) ---
+  Widget _buildSlidingInspector(
+    List<PrintRecord> allRecords,
+    double avgCostPerGram,
+  ) {
+    final isVisible = _inspectedPiece != null;
+    final piece = _inspectedPiece;
+
+    return Stack(
+      children: [
+        // Backdrop clickeable para cerrar
+        if (isVisible)
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => setState(() => _inspectedPiece = null),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.25),
+              ),
+            ),
+          ),
+
+        // Panel deslizante desde la derecha
+        Align(
+          alignment: Alignment.centerRight,
+          child: AnimatedSlide(
+            offset: isVisible ? Offset.zero : const Offset(1, 0),
+            duration: const Duration(milliseconds: 280),
+            curve: const Cubic(0.32, 0.72, 0, 1),
+            child: Container(
+              width: 360,
+              height: double.infinity,
+              decoration: BoxDecoration(
+                color: surfaceWindow,
+                border: Border(left: BorderSide(color: dividerColor, width: 1)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 30,
+                    offset: const Offset(-8, 0),
+                  ),
+                ],
+              ),
+              child: piece == null
+                  ? const SizedBox.shrink()
+                  : _buildInspectorContent(piece, allRecords, avgCostPerGram),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInspectorContent(
+    _TopPieceStat piece,
+    List<PrintRecord> allRecords,
+    double avgCostPerGram,
+  ) {
+    // Buscar registros asociados a esta pieza
+    final matchedRecords = allRecords
+        .where((r) =>
+            (r.pieceType.trim().isEmpty ? 'Sin Nombre' : r.pieceType.trim()) ==
+            piece.name)
+        .toList();
+
+    // Desglose de materiales y colores usados en esta pieza
+    final Map<String, double> matBreakdown = {};
+    final Map<String, int> colorValues = {};
+    for (final r in matchedRecords) {
+      for (final m in r.materials) {
+        final key = '${m.type} · ${m.colorName}';
+        matBreakdown[key] = (matBreakdown[key] ?? 0) + (m.grams * r.cantidad);
+        colorValues[key] = m.color;
+      }
+    }
+
+    final estimatedCost = piece.totalGrams * avgCostPerGram;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Barra superior del inspector con botón "✕"
+        Container(
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: dividerColor, width: 1)),
+          ),
+          child: Row(
+            children: [
+              Text(
+                'DETALLE DE PIEZA',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Cerrar inspector (Esc)',
+                icon: const Icon(Icons.close_rounded, size: 16),
+                color: textSecondary,
+                onPressed: () => setState(() => _inspectedPiece = null),
+              ),
+            ],
+          ),
+        ),
+
+        // Cuerpo del inspector con scroll
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Nombre de la pieza
+              Text(
+                piece.name,
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF34C759).withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'Fabricada con éxito',
+                      style: TextStyle(
+                        color: Color(0xFF34C759),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: '-apple-system',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${piece.printCount} tandas de impresión',
+                    style: TextStyle(color: textSecondary, fontSize: 11),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Métricas de la pieza
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: cardBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: cardBorderColor, width: 0.8),
+                ),
+                child: Row(
+                  children: [
+                    _inspectorStatCol('CANTIDAD', '${piece.totalUnits} uds'),
+                    _inspectorStatCol(
+                        'CONSUMO', '${piece.totalGrams.toStringAsFixed(1)} g'),
+                    _inspectorStatCol(
+                        'COSTO EST.', '\$${estimatedCost.toStringAsFixed(2)}'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Desglose de materiales y colores
+              Text(
+                'DESGLOSE DE MATERIALES Y COLORES',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              if (matBreakdown.isEmpty)
+                Text('Sin desglose disponible',
+                    style: TextStyle(color: textSecondary, fontSize: 11))
+              else
+                for (final entry in matBreakdown.entries) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: cardBorderColor, width: 0.8),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: Color(colorValues[entry.key] ?? 0xFF888888),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.black.withValues(alpha: 0.2),
+                              width: 0.8,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            entry.key,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: '-apple-system',
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${entry.value.toStringAsFixed(1)} g',
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: '-apple-system',
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
+              const SizedBox(height: 20),
+
+              // Historial reciente de órdenes para esta pieza
+              Text(
+                'ÓRDENES RECIENTES',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              for (final r in matchedRecords.take(4)) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: segmentedBg,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.print_rounded, size: 13, color: textSecondary),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          (r.printerName?.isNotEmpty ?? false)
+                              ? r.printerName!
+                              : 'Impresora estándar',
+                          style: TextStyle(
+                            color: textPrimary,
+                            fontSize: 11,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'x${r.cantidad}',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _inspectorStatCol(String label, String val) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: textSecondary,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              fontFamily: '-apple-system',
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            val,
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              fontFamily: '-apple-system',
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- PALETA DE COMANDOS TIPO SPOTLIGHT ---
+  Widget _buildSpotlightModal({
+    required List<_TopPieceStat> topPieces,
+    required Map<String, double> categoryMap,
+    required Map<String, double> colorMap,
+  }) {
+    final query = _spotlightCtrl.text.trim().toLowerCase();
+
+    // Filtrar coincidencias
+    final matchingPieces = <String>{};
+    final matchingCategories = <String>{};
+    final matchingColors = <String>{};
+
+    for (final p in topPieces) {
+      if (p.name.toLowerCase().contains(query)) {
+        matchingPieces.add(p.name);
+      }
+    }
+    for (final cat in categoryMap.keys) {
+      if (cat.toLowerCase().contains(query)) {
+        matchingCategories.add(cat);
+      }
+    }
+    for (final col in colorMap.keys) {
+      if (col.toLowerCase().contains(query)) {
+        matchingColors.add(col);
+      }
+    }
+
+    return Stack(
+      children: [
+        // Backdrop con desenfoque
+        Positioned.fill(
+          child: GestureDetector(
+            onTap: () => setState(() => _showSpotlight = false),
+            child: Container(
+              color: Colors.black.withValues(alpha: 0.4),
+            ),
+          ),
+        ),
+
+        // Ventana flotante de Spotlight centrada
+        Center(
+          child: Container(
+            width: 540,
+            constraints: const BoxConstraints(maxHeight: 460),
+            decoration: BoxDecoration(
+              color: surfaceWindow,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: cardBorderColor, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 40,
+                  offset: const Offset(0, 16),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Campo de búsqueda principal
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search_rounded, size: 20, color: accentColor),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _spotlightCtrl,
+                          focusNode: _spotlightFocusNode,
+                          autofocus: true,
+                          style: TextStyle(
+                            color: textPrimary,
+                            fontSize: 14,
+                            fontFamily: '-apple-system',
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Buscar piezas, categorías, colores o comandos...',
+                            hintStyle: TextStyle(
+                              color: textSecondary,
+                              fontSize: 13,
+                              fontFamily: '-apple-system',
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                          onSubmitted: (_) {
+                            setState(() => _showSpotlight = false);
+                          },
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: segmentedBg,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: cardBorderColor, width: 0.6),
+                        ),
+                        child: Text(
+                          'ESC',
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: dividerColor),
+
+                // Lista de resultados y comandos rápidos
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    children: [
+                      // Accesos rápidos por comando
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 4),
+                        child: Text(
+                          'ACCIONES RÁPIDAS',
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                      ),
+                      _spotlightActionTile(
+                        icon: Icons.category_rounded,
+                        title: 'Consultar por categoría',
+                        subtitle: 'Organiza el análisis según tipo de pieza',
+                        onTap: () {
+                          setState(() {
+                            _showSpotlight = false;
+                          });
+                        },
+                      ),
+                      _spotlightActionTile(
+                        icon: Icons.palette_rounded,
+                        title: 'Consultar por color',
+                        subtitle: 'Muestra estadísticas desglosadas por filamento',
+                        onTap: () {
+                          setState(() {
+                            _showSpotlight = false;
+                          });
+                        },
+                      ),
+                      _spotlightActionTile(
+                        icon: Icons.attach_money_rounded,
+                        title: 'Ver costos estimados',
+                        subtitle: 'Cálculo de costo de material por gramo',
+                        onTap: () {
+                          setState(() {
+                            _showSpotlight = false;
+                          });
+                        },
+                      ),
+                      _spotlightActionTile(
+                        icon: Icons.ios_share_rounded,
+                        title: 'Exportar este periodo',
+                        subtitle: 'Genera PDF o Excel del semestre seleccionado',
+                        onTap: () {
+                          setState(() => _showSpotlight = false);
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => ExportScreen(
+                                vm: vm,
+                                inventoryVm: widget.inventoryVm,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+
+                      if (query.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 4),
+                          child: Text(
+                            'RESULTADOS DE LA BÚSQUEDA',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6,
+                              fontFamily: '-apple-system',
+                            ),
+                          ),
+                        ),
+                        for (final p in matchingPieces.take(3))
+                          _spotlightResultTile(
+                            icon: Icons.view_in_ar_rounded,
+                            title: p,
+                            tag: 'Pieza',
+                            onTap: () {
+                              setState(() {
+                                _showSpotlight = false;
+                              });
+                            },
+                          ),
+                        for (final c in matchingCategories.take(3))
+                          _spotlightResultTile(
+                            icon: Icons.folder_open_rounded,
+                            title: c,
+                            tag: 'Categoría',
+                            onTap: () {
+                              setState(() {
+                                _showSpotlight = false;
+                              });
+                            },
+                          ),
+                        for (final col in matchingColors.take(3))
+                          _spotlightResultTile(
+                            icon: Icons.circle,
+                            title: col,
+                            tag: 'Color',
+                            onTap: () {
+                              setState(() {
+                                _showSpotlight = false;
+                              });
+                            },
+                          ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _spotlightActionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: segmentedBg,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(icon, size: 15, color: accentColor),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 10.5,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded,
+                size: 11, color: textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _spotlightResultTile({
+    required IconData icon,
+    required String title,
+    required String tag,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: textSecondary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 12,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: segmentedBg,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                tag,
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ==========================================
-// PINTORES PERSONALIZADOS PARA EL DASHBOARD
+// PINTORES PERSONALIZADOS PARA EL DASHBOARD MACOS
 // ==========================================
 
-class _MinimalAreaChartPainter extends CustomPainter {
-  final List<double> values;
-  final double maxVal;
+class _MacProductionChartPainter extends CustomPainter {
+  final List<_MonthlyDataPoint> points;
+  final List<_MonthlyDataPoint> compPoints;
+  final int metricIndex; // 0 = gramos, 1 = piezas
   final int peakIndex;
+  final double maxVal;
   final bool isDark;
+  final Color accentColor;
+  final String? selectedMonthKey;
 
-  _MinimalAreaChartPainter({
-    required this.values,
-    required this.maxVal,
+  _MacProductionChartPainter({
+    required this.points,
+    required this.compPoints,
+    required this.metricIndex,
     required this.peakIndex,
+    required this.maxVal,
     required this.isDark,
+    required this.accentColor,
+    required this.selectedMonthKey,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (values.isEmpty) return;
+    if (points.isEmpty) return;
 
-    final count = values.length;
+    final count = points.length;
     final w = size.width;
     final h = size.height;
+    const bottomPadding = 24.0;
+    final chartH = h - bottomPadding;
 
-    // 1. Líneas de referencia horizontales sutiles (al 25%, 50%, 75%)
+    // 1. Líneas guía horizontales al 25%, 50%, 75%
     final gridPaint = Paint()
-      ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05)
+      ..color = (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06)
       ..strokeWidth = 0.8
       ..style = PaintingStyle.stroke;
 
-    for (final fraction in [0.25, 0.5, 0.75]) {
-      final y = h * fraction;
-      _drawDashedLine(canvas, Offset(0, y), Offset(w, y), gridPaint, 4, 4);
+    for (final f in [0.25, 0.5, 0.75]) {
+      final y = chartH * f;
+      canvas.drawLine(Offset(0, y), Offset(w, y), gridPaint);
     }
 
-    // 2. Calcular posiciones de cada punto
-    final points = <Offset>[];
+    // 2. Calcular posiciones X e Y de la serie principal
+    final coords = <Offset>[];
     for (int i = 0; i < count; i++) {
       final x = count <= 1 ? w / 2 : (i * (w / (count - 1)));
-      final val = values[i];
-      final ratio = maxVal > 0 ? (val / maxVal).clamp(0.06, 0.90) : 0.06;
-      final y = h - (ratio * (h - 12));
-      points.add(Offset(x, y));
+      final val = metricIndex == 0 ? points[i].grams : points[i].pieces.toDouble();
+      final ratio = maxVal > 0 ? (val / maxVal).clamp(0.04, 0.90) : 0.04;
+      final y = chartH - (ratio * (chartH - 12));
+      coords.add(Offset(x, y));
     }
 
-    if (points.length < 2) return;
+    // 3. Si hay datos comparativos del periodo anterior, dibujarlos con curva fantasma
+    if (compPoints.isNotEmpty && compPoints.length == points.length) {
+      final compCoords = <Offset>[];
+      for (int i = 0; i < compPoints.length; i++) {
+        final x = count <= 1 ? w / 2 : (i * (w / (count - 1)));
+        final val = metricIndex == 0
+            ? compPoints[i].grams
+            : compPoints[i].pieces.toDouble();
+        final ratio = maxVal > 0 ? (val / maxVal).clamp(0.04, 0.90) : 0.04;
+        final y = chartH - (ratio * (chartH - 12));
+        compCoords.add(Offset(x, y));
+      }
 
-    // 3. Columna guía vertical discontinua en el pico
-    if (peakIndex >= 0 && peakIndex < points.length && maxVal > 0) {
-      final peakPoint = points[peakIndex];
+      if (compCoords.length >= 2) {
+        final compPath = Path();
+        compPath.moveTo(compCoords[0].dx, compCoords[0].dy);
+        for (int i = 0; i < compCoords.length - 1; i++) {
+          final p0 = compCoords[i];
+          final p1 = compCoords[i + 1];
+          final cx = (p0.dx + p1.dx) / 2;
+          compPath.cubicTo(cx, p0.dy, cx, p1.dy, p1.dx, p1.dy);
+        }
+
+        final ghostPaint = Paint()
+          ..color = Colors.amber.withValues(alpha: isDark ? 0.45 : 0.4)
+          ..strokeWidth = 1.6
+          ..style = PaintingStyle.stroke;
+        canvas.drawPath(compPath, ghostPaint);
+      }
+    }
+
+    if (coords.length < 2) return;
+
+    // 4. Guía vertical discontinua en el mes pico
+    if (peakIndex >= 0 && peakIndex < coords.length && maxVal > 0) {
+      final peakPoint = coords[peakIndex];
       final guidePaint = Paint()
-        ..color = const Color(0xFF10B981).withValues(alpha: 0.25)
-        ..strokeWidth = 1.0
-        ..style = PaintingStyle.stroke;
+        ..color = accentColor.withValues(alpha: 0.3)
+        ..strokeWidth = 1.0;
       _drawDashedLine(
         canvas,
         Offset(peakPoint.dx, peakPoint.dy),
-        Offset(peakPoint.dx, h),
+        Offset(peakPoint.dx, chartH),
         guidePaint,
         3,
         3,
       );
     }
 
-    // 4. Curva Bézier suave para la onda
+    // 5. Curva Bézier cúbica suave
     final path = Path();
-    path.moveTo(points[0].dx, points[0].dy);
+    path.moveTo(coords[0].dx, coords[0].dy);
 
-    for (int i = 0; i < points.length - 1; i++) {
-      final p0 = points[i];
-      final p1 = points[i + 1];
+    for (int i = 0; i < coords.length - 1; i++) {
+      final p0 = coords[i];
+      final p1 = coords[i + 1];
       final cx = (p0.dx + p1.dx) / 2;
       path.cubicTo(cx, p0.dy, cx, p1.dy, p1.dx, p1.dy);
     }
 
-    // 5. Relleno con degradado área bajo la curva
+    // 6. Relleno con degradado área bajo la curva (vibrancy glow)
     final fillPath = Path.from(path);
-    fillPath.lineTo(points.last.dx, h);
-    fillPath.lineTo(points.first.dx, h);
+    fillPath.lineTo(coords.last.dx, chartH);
+    fillPath.lineTo(coords.first.dx, chartH);
     fillPath.close();
 
     final fillPaint = Paint()
       ..shader = LinearGradient(
         colors: [
-          const Color(0xFF10B981).withValues(alpha: isDark ? 0.25 : 0.16),
-          const Color(0xFF10B981).withValues(alpha: 0.0),
+          accentColor.withValues(alpha: isDark ? 0.3 : 0.2),
+          accentColor.withValues(alpha: 0.0),
         ],
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-      ).createShader(Rect.fromLTWH(0, 0, w, h));
+      ).createShader(Rect.fromLTWH(0, 0, w, chartH));
     canvas.drawPath(fillPath, fillPaint);
 
-    // 6. Resplandor sutil (stroke blur)
+    // 7. Resplandor suave del trazo
     final glowPaint = Paint()
-      ..color = const Color(0xFF10B981).withValues(alpha: isDark ? 0.35 : 0.2)
+      ..color = accentColor.withValues(alpha: isDark ? 0.35 : 0.2)
       ..strokeWidth = 4.0
       ..style = PaintingStyle.stroke
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
     canvas.drawPath(path, glowPaint);
 
-    // 7. Trazo principal de la curva
+    // 8. Trazo principal de la curva
     final strokePaint = Paint()
-      ..color = const Color(0xFF10B981)
-      ..strokeWidth = 2.2
+      ..color = accentColor
+      ..strokeWidth = 2.4
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
     canvas.drawPath(path, strokePaint);
 
-    // 8. Nodo en el pico
-    if (peakIndex >= 0 && peakIndex < points.length && maxVal > 0) {
-      final p = points[peakIndex];
-      // Halo exterior
-      canvas.drawCircle(
-        p,
-        6,
-        Paint()..color = const Color(0xFF10B981).withValues(alpha: 0.25),
+    // 9. Nodos y etiquetas en el eje X
+    final textStyle = TextStyle(
+      color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.55),
+      fontSize: 10,
+      fontFamily: '-apple-system',
+      fontWeight: FontWeight.w500,
+    );
+
+    for (int i = 0; i < count; i++) {
+      final p = coords[i];
+      final isPeak = i == peakIndex && maxVal > 0;
+
+      // Dibujar nodo
+      if (isPeak) {
+        // Halo exterior
+        canvas.drawCircle(
+          p,
+          6,
+          Paint()..color = accentColor.withValues(alpha: 0.25),
+        );
+        // Punto sólido
+        canvas.drawCircle(
+          p,
+          3.5,
+          Paint()..color = accentColor,
+        );
+        // Centro blanco
+        canvas.drawCircle(
+          p,
+          1.5,
+          Paint()..color = Colors.white,
+        );
+      } else {
+        canvas.drawCircle(
+          p,
+          2.5,
+          Paint()..color = accentColor.withValues(alpha: 0.8),
+        );
+      }
+
+      // Etiqueta del mes
+      final textSpan = TextSpan(
+        text: points[i].label,
+        style: isPeak
+            ? textStyle.copyWith(
+                color: isDark ? Colors.white : Colors.black,
+                fontWeight: FontWeight.w700,
+              )
+            : textStyle,
       );
-      // Círculo sólido
-      canvas.drawCircle(
-        p,
-        3.5,
-        Paint()..color = const Color(0xFF10B981),
-      );
-      // Centro blanco
-      canvas.drawCircle(
-        p,
-        1.5,
-        Paint()..color = Colors.white,
+      final tp = TextPainter(
+        text: textSpan,
+        textDirection: TextDirection.ltr,
+      )..layout();
+
+      tp.paint(
+        canvas,
+        Offset(
+          (p.dx - tp.width / 2).clamp(0.0, w - tp.width),
+          chartH + 6,
+        ),
       );
     }
   }
@@ -7393,7 +8399,7 @@ class _MinimalAreaChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _MinimalAreaChartPainter oldDelegate) => true;
+  bool shouldRepaint(covariant _MacProductionChartPainter oldDelegate) => true;
 }
 
 class _MonthlyDataPoint {
@@ -7446,6 +8452,39 @@ List<excel_pkg.CellValue?> _toExcelRow(List<dynamic> values) =>
       return excel_pkg.TextCellValue(value.toString());
     }).toList();
 
+Future<void> saveBytesToFile(
+    List<int> bytes, String fileName, String mimeType, String extension) async {
+  final isDesktop = !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
+  if (isDesktop) {
+    final location = await getSaveLocation(
+      suggestedName: fileName,
+      acceptedTypeGroups: [
+        XTypeGroup(label: extension.toUpperCase(), extensions: [extension]),
+      ],
+    );
+    if (location == null) return;
+    await XFile.fromData(Uint8List.fromList(bytes),
+            name: fileName, mimeType: mimeType)
+        .saveTo(location.path);
+    return;
+  }
+
+  await share_plus.SharePlus.instance.share(
+    share_plus.ShareParams(
+      files: [
+        share_plus.XFile.fromData(Uint8List.fromList(bytes),
+            mimeType: mimeType),
+      ],
+      fileNameOverrides: [fileName],
+      downloadFallbackEnabled: true,
+    ),
+  );
+}
+
 class ExportScreen extends StatefulWidget {
   final VoidCallback? onToggleMenu;
   final VoidCallback? onHoverMenu;
@@ -7477,37 +8516,8 @@ class _ExportState extends State<ExportScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   Future<void> _saveBytes(List<int> bytes, String fileName, String mimeType,
-      String extension) async {
-    final isDesktop = !kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.linux ||
-            defaultTargetPlatform == TargetPlatform.windows ||
-            defaultTargetPlatform == TargetPlatform.macOS);
-
-    if (isDesktop) {
-      final location = await getSaveLocation(
-        suggestedName: fileName,
-        acceptedTypeGroups: [
-          XTypeGroup(label: extension.toUpperCase(), extensions: [extension]),
-        ],
-      );
-      if (location == null) return;
-      await XFile.fromData(Uint8List.fromList(bytes),
-              name: fileName, mimeType: mimeType)
-          .saveTo(location.path);
-      return;
-    }
-
-    await share_plus.SharePlus.instance.share(
-      share_plus.ShareParams(
-        files: [
-          share_plus.XFile.fromData(Uint8List.fromList(bytes),
-              mimeType: mimeType),
-        ],
-        fileNameOverrides: [fileName],
-        downloadFallbackEnabled: true,
-      ),
-    );
-  }
+          String extension) =>
+      saveBytesToFile(bytes, fileName, mimeType, extension);
 
   @override
   void initState() {
@@ -7614,7 +8624,20 @@ class _ExportState extends State<ExportScreen> {
     }).toList();
   }
 
+  DateTime? _getInventoryItemDate(InventoryItem item) {
+    final numVal = int.tryParse(item.id);
+    if (numVal != null) {
+      if (numVal > 100000000000000) {
+        return DateTime.fromMicrosecondsSinceEpoch(numVal);
+      } else if (numVal > 1000000000) {
+        return DateTime.fromMillisecondsSinceEpoch(numVal);
+      }
+    }
+    return null;
+  }
+
   List<InventoryItem> get _filteredInventory {
+    final now = DateTime.now();
     return inventory.inventoryItems.where((item) {
       if (searchQuery.trim().isNotEmpty) {
         final q = searchQuery.toLowerCase().trim();
@@ -7638,6 +8661,34 @@ class _ExportState extends State<ExportScreen> {
         if (!item.isDepleted && item.stockActual > 0.001) return false;
       } else if (inventoryStockFilter == 'OPTIMO') {
         if (item.isLowStock) return false;
+      }
+
+      // Filtro de Periodo / Semestre en inventario
+      final itemDate = _getInventoryItemDate(item);
+      if (itemDate != null && period != 'TODOS') {
+        if (period == 'HOY') {
+          final startOfDay = DateTime(now.year, now.month, now.day);
+          if (!itemDate.isAfter(startOfDay.subtract(const Duration(seconds: 1)))) {
+            return false;
+          }
+        } else if (period == '7 DÍAS') {
+          final sevenDaysAgo = now.subtract(const Duration(days: 7));
+          if (!itemDate.isAfter(sevenDaysAgo)) return false;
+        } else if (period == 'ESTE MES') {
+          final startOfMonth = DateTime(now.year, now.month, 1);
+          if (!itemDate.isAfter(startOfMonth.subtract(const Duration(seconds: 1)))) {
+            return false;
+          }
+        } else if (period == 'ACTUAL' ||
+            period == 'ANTERIOR' ||
+            period.startsWith('SEM_')) {
+          final sem = AcademicSemesterInfo.getActive(period, now);
+          final ms = itemDate.millisecondsSinceEpoch;
+          if (ms < sem.startDate.millisecondsSinceEpoch ||
+              ms > sem.endDate.millisecondsSinceEpoch) {
+            return false;
+          }
+        }
       }
 
       return true;
@@ -8177,7 +9228,221 @@ class _ExportState extends State<ExportScreen> {
         'xlsx');
   }
 
+  Future<void> _showWordExportDialog(BuildContext context) async {
+    final count = _availableInventory.length;
+    if (count == 0) {
+      toast(context, 'Selecciona al menos un carrete para exportar el reporte Word',
+          isError: true);
+      return;
+    }
+
+    final year = DateTime.now().year;
+    final oficioController =
+        TextEditingController(text: 'OFICIO No.: P. XXXX/$year');
+    DateTime selectedDate = DateTime.now();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          final formattedDate =
+              '${selectedDate.day}/${WordInventoryExporter.spanishMonths[selectedDate.month - 1]}/${selectedDate.year}';
+          return AlertDialog(
+            backgroundColor: surfaceCard,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: borderSubtle),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E40AF).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.description_outlined,
+                      color: Color(0xFF3B82F6), size: 20),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Reporte Word de Inventario',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 480,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: surfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: borderSubtle),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline,
+                            size: 16, color: accentPetrol),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Se generará el archivo Word institucional exacto basado en el formato oficial del ITCM / TecNM, estructurado en dos tablas: "Material sellado" y "Material en uso" con sus ubicaciones y firmas.',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Número de Oficio:',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: oficioController,
+                    style: TextStyle(color: textPrimary, fontSize: 13),
+                    decoration: fieldDecoration('Número de Oficio',
+                        hint: 'Ej: OFICIO No.: P. 0142/$year'),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Fecha del documento:',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (picked != null) {
+                        setDlgState(() => selectedDate = picked);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: surfaceElevated,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: borderSubtle),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today_outlined,
+                              size: 16, color: textSecondary),
+                          const SizedBox(width: 10),
+                          Text(
+                            formattedDate,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'Cambiar',
+                            style: TextStyle(
+                              color: accentPetrol,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dlgCtx, false),
+                child: Text('Cancelar', style: TextStyle(color: textSecondary)),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(dlgCtx, true),
+                icon: const Icon(Icons.download_rounded, size: 16),
+                label: const Text('GENERAR WORD (.DOCX)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E40AF),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result != true) return;
+
+    try {
+      final config = WordInventoryReportConfig(
+        date: selectedDate,
+        oficioNo: oficioController.text.trim(),
+      );
+      final bytes = await WordInventoryExporter.generateDocx(
+        items: _availableInventory,
+        config: config,
+      );
+      final fileName =
+          'INVENTARIO_LABORATORIO_3D_${selectedDate.day}_${selectedDate.month}_${selectedDate.year}.docx';
+      await _saveBytes(
+        bytes,
+        fileName,
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'docx',
+      );
+      if (!context.mounted) return;
+      toast(context,
+          'Reporte de inventario en Word (.docx) exportado correctamente');
+    } catch (e, st) {
+      debugPrint('Error exportando Word: $e\n$st');
+      if (!context.mounted) return;
+      toast(context, 'Error al generar Word: $e', isError: true);
+    }
+  }
+
   Future<void> _export(BuildContext context, String format) async {
+    if (format == 'Word') {
+      await _showWordExportDialog(context);
+      return;
+    }
+
     final count =
         tab == 0 ? _availablePrints.length : _availableInventory.length;
     if (count == 0) {
@@ -8453,41 +9718,42 @@ class _ExportState extends State<ExportScreen> {
 
                 const SizedBox(width: 10),
 
-                // Selector de Periodo y Semestre (solo en tab Impresiones)
-                if (tab == 0) ...[
-                  Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: surfaceElevated,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: borderSubtle),
-                    ),
-                    child: DropdownButton<String>(
-                      value: period,
-                      underline: const SizedBox(),
-                      dropdownColor: surfaceElevated,
-                      icon: Icon(Icons.arrow_drop_down,
-                          color: textSecondary, size: 18),
-                      items: periodItems,
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setState(() {
-                          period = v;
-                          selectedPrint.clear();
-                          selectedPrint
-                              .addAll(_filteredPrints.map((r) => r.id));
-                        });
-                      },
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
+                // Selector de Periodo y Semestre (disponible en ambas pestañas: Impresiones e Inventario)
+                Container(
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: surfaceElevated,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: borderSubtle),
+                  ),
+                  child: DropdownButton<String>(
+                    value: period,
+                    underline: const SizedBox(),
+                    dropdownColor: surfaceElevated,
+                    icon: Icon(Icons.arrow_drop_down,
+                        color: textSecondary, size: 18),
+                    items: periodItems,
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() {
+                        period = v;
+                        selectedPrint.clear();
+                        selectedPrint
+                            .addAll(_filteredPrints.map((r) => r.id));
+                        selectedInventory.clear();
+                        selectedInventory
+                            .addAll(_filteredInventory.map((i) => i.id));
+                      });
+                    },
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                ],
+                ),
+                const SizedBox(width: 8),
 
                 // Selectores de Inventario (solo en tab Inventario)
                 if (tab == 1) ...[
@@ -8856,6 +10122,20 @@ class _ExportState extends State<ExportScreen> {
                     height: 40,
                   ),
                 ),
+                if (tab == 1) ...[
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 195,
+                    child: techButton(
+                      'EXPORTAR WORD ($selectedCount)',
+                      () => _showWordExportDialog(context),
+                      icon: Icons.description_outlined,
+                      color: const Color(0xFF1E40AF),
+                      foreground: Colors.white,
+                      height: 40,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -9456,6 +10736,215 @@ class _InventoryState extends State<InventoryScreen> {
     super.dispose();
   }
 
+  Future<void> _showInventoryWordDialog(BuildContext context) async {
+    final items = vm.inventoryItems;
+    if (items.isEmpty) {
+      toast(context, 'No hay bobinas en el inventario para generar el reporte',
+          isError: true);
+      return;
+    }
+
+    final year = DateTime.now().year;
+    final oficioController =
+        TextEditingController(text: 'OFICIO No.: P. XXXX/$year');
+    DateTime selectedDate = DateTime.now();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dlgCtx) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          final formattedDate =
+              '${selectedDate.day}/${WordInventoryExporter.spanishMonths[selectedDate.month - 1]}/${selectedDate.year}';
+          return AlertDialog(
+            backgroundColor: surfaceCard,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: borderSubtle),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E40AF).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.description_outlined,
+                      color: Color(0xFF3B82F6), size: 20),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Reporte Word de Inventario',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 480,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: surfaceElevated,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: borderSubtle),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline,
+                            size: 16, color: accentPetrol),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Se generará el archivo Word institucional exacto basado en el formato oficial del ITCM / TecNM, estructurado en dos tablas: "Material sellado" y "Material en uso" con sus ubicaciones y firmas.',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 12,
+                              height: 1.4,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Número de Oficio:',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: oficioController,
+                    style: TextStyle(color: textPrimary, fontSize: 13),
+                    decoration: fieldDecoration('Número de Oficio',
+                        hint: 'Ej: OFICIO No.: P. 0142/$year'),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Fecha del documento:',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                      );
+                      if (picked != null) {
+                        setDlgState(() => selectedDate = picked);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: surfaceElevated,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: borderSubtle),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today_outlined,
+                              size: 16, color: textSecondary),
+                          const SizedBox(width: 10),
+                          Text(
+                            formattedDate,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            'Cambiar',
+                            style: TextStyle(
+                              color: accentPetrol,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dlgCtx, false),
+                child: Text('Cancelar', style: TextStyle(color: textSecondary)),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(dlgCtx, true),
+                icon: const Icon(Icons.download_rounded, size: 16),
+                label: const Text('GENERAR WORD (.DOCX)'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E40AF),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result != true) return;
+
+    try {
+      final config = WordInventoryReportConfig(
+        date: selectedDate,
+        oficioNo: oficioController.text.trim(),
+      );
+      final bytes = await WordInventoryExporter.generateDocx(
+        items: items,
+        config: config,
+      );
+      final fileName =
+          'INVENTARIO_LABORATORIO_3D_${selectedDate.day}_${selectedDate.month}_${selectedDate.year}.docx';
+      await saveBytesToFile(
+        bytes,
+        fileName,
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'docx',
+      );
+      if (!context.mounted) return;
+      toast(context,
+          'Reporte de inventario en Word (.docx) generado correctamente');
+    } catch (e, st) {
+      debugPrint('Error exportando Word: $e\n$st');
+      if (!context.mounted) return;
+      toast(context, 'Error al generar Word: $e', isError: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
         animation: vm,
@@ -9477,6 +10966,8 @@ class _InventoryState extends State<InventoryScreen> {
             if (statusFilter == 'Activos' && i.isDepleted) return false;
             if (statusFilter == 'Bajo' && !i.isLowStock) return false;
             if (statusFilter == 'Agotados' && !i.isDepleted) return false;
+            if (statusFilter == 'Sellado' && !i.isSellado) return false;
+            if (statusFilter == 'EnUso' && !i.isEnUso) return false;
 
             // Filtro por Material
             if (materialFilter != 'Todos' && i.material != materialFilter) {
@@ -9502,6 +10993,33 @@ class _InventoryState extends State<InventoryScreen> {
               onHoverEnter: widget.onHoverMenu,
               hideLeading: widget.isPinned,
               actions: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: OutlinedButton.icon(
+                    onPressed: () => _showInventoryWordDialog(context),
+                    icon: const Icon(Icons.description_outlined,
+                        size: 16, color: accentPetrol),
+                    label: const Text(
+                      'Reporte Word',
+                      style: TextStyle(
+                        color: accentPetrol,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 0),
+                      side: const BorderSide(color: accentPetrol),
+                      foregroundColor: accentPetrol,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: ElevatedButton.icon(
@@ -9672,6 +11190,16 @@ class _InventoryState extends State<InventoryScreen> {
                           'Todos los estados',
                           statusFilter == 'Todos',
                           () => setState(() => statusFilter = 'Todos'),
+                        ),
+                        _filterChip(
+                          'Sellados (${vm.inventoryItems.where((i) => i.isSellado).length})',
+                          statusFilter == 'Sellado',
+                          () => setState(() => statusFilter = 'Sellado'),
+                        ),
+                        _filterChip(
+                          'En uso (${vm.inventoryItems.where((i) => i.isEnUso).length})',
+                          statusFilter == 'EnUso',
+                          () => setState(() => statusFilter = 'EnUso'),
                         ),
                         if (vm.lowStockCount > 0)
                           _filterChip(
@@ -9849,7 +11377,11 @@ class _InventoryState extends State<InventoryScreen> {
               if (depleted)
                 _statusBadge('AGOTADO', semanticDanger)
               else if (low)
-                _statusBadge('BAJO STOCK', semanticDanger),
+                _statusBadge('BAJO STOCK', semanticDanger)
+              else if (item.isEnUso)
+                _statusBadge('EN USO', Colors.amber.shade700)
+              else
+                _statusBadge('SELLADO', const Color(0xFF10B981)),
               const SizedBox(width: 4),
               PopupMenuButton<String>(
                 tooltip: 'Opciones',
@@ -9859,7 +11391,16 @@ class _InventoryState extends State<InventoryScreen> {
                 constraints: const BoxConstraints(),
                 color: surfaceElevated,
                 onSelected: (val) async {
-                  if (val == 'edit') {
+                  if (val == 'toggle_en_uso') {
+                    await vm.toggleEnUso(item, !item.isEnUso);
+                    if (!mounted) return;
+                    toast(
+                      context,
+                      !item.isEnUso
+                          ? 'Bobina marcada como En Uso'
+                          : 'Bobina marcada como Sellada',
+                    );
+                  } else if (val == 'edit') {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -9876,6 +11417,27 @@ class _InventoryState extends State<InventoryScreen> {
                   }
                 },
                 itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'toggle_en_uso',
+                    child: Row(
+                      children: [
+                        Icon(
+                          item.isEnUso
+                              ? Icons.lock_outline
+                              : Icons.lock_open_outlined,
+                          size: 15,
+                          color: textSecondary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          item.isEnUso
+                              ? 'Marcar como Sellado'
+                              : 'Marcar como En Uso',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
                   PopupMenuItem(
                     value: 'edit',
                     child: Row(
@@ -9983,19 +11545,23 @@ class _InventoryState extends State<InventoryScreen> {
           Row(
             children: [
               Text(
-                '${item.diameter.toStringAsFixed(2)} mm',
+                '📍 ${item.effectiveLocation}',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '· ${item.diameter.toStringAsFixed(2)} mm',
                 style: TextStyle(color: textSecondary, fontSize: 10),
               ),
               if (item.tempNozzle != null) ...[
                 Text(' · ♨ ${item.tempNozzle}°C',
                     style: TextStyle(color: textSecondary, fontSize: 10)),
-              ],
-              if (item.location != null &&
-                  item.location!.trim().isNotEmpty) ...[
-                Text(' · 📍 ${item.location}',
-                    style: TextStyle(color: textSecondary, fontSize: 10),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
               ],
             ],
           ),
@@ -10076,19 +11642,31 @@ class _InventoryState extends State<InventoryScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '${item.brand != 'Genérica' ? '[${item.brand}] ' : ''}${item.material} · ${item.color}',
-                        style: TextStyle(
-                          color: textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '${item.brand != 'Genérica' ? '[${item.brand}] ' : ''}${item.material} · ${item.color}',
+                              style: TextStyle(
+                                color: textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _statusBadge(
+                            item.isEnUso ? 'EN USO' : 'SELLADO',
+                            item.isEnUso
+                                ? Colors.amber.shade700
+                                : const Color(0xFF10B981),
+                          ),
+                        ],
                       ),
                       Text(
-                        '${item.diameter.toStringAsFixed(2)} mm'
-                        '${item.tempNozzle != null ? ' · ♨ ${item.tempNozzle}°C' : ''}'
-                        '${item.location != null && item.location!.isNotEmpty ? ' · 📍 ${item.location}' : ''}',
+                        '📍 ${item.effectiveLocation} · ${item.diameter.toStringAsFixed(2)} mm'
+                        '${item.tempNozzle != null ? ' · ♨ ${item.tempNozzle}°C' : ''}',
                         style: TextStyle(color: textSecondary, fontSize: 10),
                       ),
                     ],
@@ -10169,7 +11747,16 @@ class _InventoryState extends State<InventoryScreen> {
                   constraints: const BoxConstraints(),
                   color: surfaceElevated,
                   onSelected: (val) async {
-                    if (val == 'copy') {
+                    if (val == 'toggle_en_uso') {
+                      await vm.toggleEnUso(item, !item.isEnUso);
+                      if (!mounted) return;
+                      toast(
+                        context,
+                        !item.isEnUso
+                            ? 'Bobina marcada como En Uso'
+                            : 'Bobina marcada como Sellada',
+                      );
+                    } else if (val == 'copy') {
                       await vm.duplicateItem(item);
                       if (!mounted) return;
                       toast(context, 'Bobina duplicada');
@@ -10177,12 +11764,21 @@ class _InventoryState extends State<InventoryScreen> {
                       _confirmDeleteItem(item);
                     }
                   },
-                  itemBuilder: (_) => const [
+                  itemBuilder: (_) => [
                     PopupMenuItem(
+                      value: 'toggle_en_uso',
+                      child: Text(
+                        item.isEnUso
+                            ? 'Marcar como Sellado'
+                            : 'Marcar como En Uso',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                    const PopupMenuItem(
                       value: 'copy',
                       child: Text('Duplicar', style: TextStyle(fontSize: 12)),
                     ),
-                    PopupMenuItem(
+                    const PopupMenuItem(
                       value: 'delete',
                       child: Text('Eliminar',
                           style:
@@ -10609,12 +12205,13 @@ class _AddProductState extends State<AddProductScreen> {
   // Costo
   final priceText = TextEditingController(text: '0.00');
 
-  // Parámetros técnicos
+  // Parámetros técnicos y ubicación
   double diameter = 1.75;
   final nozzleTempText = TextEditingController();
   final bedTempText = TextEditingController();
-  final locationText = TextEditingController();
+  final locationText = TextEditingController(text: 'CMI');
   final notesText = TextEditingController();
+  bool enUso = false;
 
   bool _saving = false;
 
@@ -10644,6 +12241,7 @@ class _AddProductState extends State<AddProductScreen> {
     super.initState();
     final edit = widget.itemToEdit;
     if (edit != null) {
+      enUso = edit.isEnUso;
       brand = edit.brand;
       if (!widget.vm.allBrands.contains(brand)) {
         customBrand = true;
@@ -10677,13 +12275,13 @@ class _AddProductState extends State<AddProductScreen> {
       if (edit.tempBed != null) {
         bedTempText.text = edit.tempBed.toString();
       }
-      if (edit.location != null) {
-        locationText.text = edit.location!;
-      }
+      locationText.text = edit.effectiveLocation;
       if (edit.notes != null) {
         notesText.text = edit.notes!;
       }
     } else {
+      locationText.text = 'CMI';
+      enUso = false;
       if (widget.vm.colorCatalog.isNotEmpty) {
         color = widget.vm.colorCatalog.first.nombre;
         colorHex = widget.vm.colorCatalog.first.hex;
@@ -11169,6 +12767,126 @@ class _AddProductState extends State<AddProductScreen> {
               ],
             ),
           ),
+          // Ubicación y Estado en Taller
+          formCard(
+            title: 'Ubicación y Estado en Taller',
+            subtitle:
+                'Ubicación física en laboratorio y si el carrete está sellado o en uso',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Estado del carrete:',
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    ChoiceChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.inventory_2_outlined,
+                              size: 14,
+                              color: !enUso ? Colors.white : textSecondary),
+                          const SizedBox(width: 6),
+                          const Text('Sellado / Nuevo (Cerrado)'),
+                        ],
+                      ),
+                      selected: !enUso,
+                      selectedColor: accentPetrol,
+                      backgroundColor: surfaceElevated,
+                      labelStyle: TextStyle(
+                        color: !enUso ? Colors.white : textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      onSelected: (val) {
+                        if (val) setState(() => enUso = false);
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    ChoiceChip(
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.build_circle_outlined,
+                              size: 14,
+                              color: enUso ? Colors.white : textSecondary),
+                          const SizedBox(width: 6),
+                          const Text('En uso (Abierto / En máquina)'),
+                        ],
+                      ),
+                      selected: enUso,
+                      selectedColor: const Color(0xFFD97706),
+                      backgroundColor: surfaceElevated,
+                      labelStyle: TextStyle(
+                        color: enUso ? Colors.white : textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      onSelected: (val) {
+                        if (val) setState(() => enUso = true);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Ubicación física en laboratorio / taller:',
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    'CMI',
+                    'Lab 3D',
+                    'Mesa Impresión',
+                    'Armario A',
+                    'Almacén'
+                  ].map((loc) {
+                    return ActionChip(
+                      label: Text(loc),
+                      labelStyle: TextStyle(
+                        color: textPrimary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      backgroundColor: surfaceElevated,
+                      side: BorderSide(color: borderSubtle),
+                      onPressed: () {
+                        setState(() => locationText.text = loc);
+                      },
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: 320,
+                  child: TextField(
+                    controller: locationText,
+                    style: TextStyle(color: textPrimary, fontSize: 13),
+                    decoration: fieldDecoration(
+                      'Ubicación (ej: CMI)',
+                      hint: 'Ej: CMI, Estante 2...',
+                      prefix: Icon(Icons.place_outlined,
+                          size: 16, color: textSecondary),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 24),
 
           // Botón de Guardar
@@ -11239,8 +12957,9 @@ class _AddProductState extends State<AddProductScreen> {
           diameter: diameter,
           tempNozzle: nozzle,
           tempBed: bed,
-          location: location,
+          location: location ?? 'CMI',
           notes: notes,
+          enUso: enUso,
         );
         await widget.vm.updateItem(updated);
         if (!mounted) return;
@@ -11259,8 +12978,9 @@ class _AddProductState extends State<AddProductScreen> {
           diameter: diameter,
           tempNozzle: nozzle,
           tempBed: bed,
-          location: location,
+          location: location ?? 'CMI',
           notes: notes,
+          enUso: enUso,
         );
         await widget.vm.addItem(newItem);
         if (!mounted) return;

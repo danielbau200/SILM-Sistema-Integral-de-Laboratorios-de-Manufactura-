@@ -821,22 +821,29 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('SEM. ACTUAL'), findsOneWidget);
-    expect(find.text('SEM. ANTERIOR'), findsOneWidget);
-    expect(find.text('HISTORIAL'), findsOneWidget);
+    expect(find.text('Sem. actual'), findsOneWidget);
+    expect(find.text('Sem. anterior'), findsOneWidget);
+    expect(find.text('Historial'), findsOneWidget);
 
     // Conmutar a Semestre Anterior
-    await tester.tap(find.text('SEM. ANTERIOR'));
+    await tester.tap(find.text('Sem. anterior'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
     // Conmutar a Historial
-    await tester.tap(find.text('HISTORIAL'));
+    await tester.tap(find.text('Historial'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
+    // Seleccionar opción de Historial para cerrar el popup
+    if (find.text('Historial semestral completo').evaluate().isNotEmpty) {
+      await tester.tap(find.text('Historial semestral completo'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    }
+
     // Conmutar a Semestre Actual
-    await tester.tap(find.text('SEM. ACTUAL'));
+    await tester.tap(find.text('Sem. actual'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });

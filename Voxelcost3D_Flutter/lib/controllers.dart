@@ -265,21 +265,42 @@ class InventoryViewModel extends ChangeNotifier {
     String? colorName,
     String? colorHex,
     int? colorValue,
+    String? preferredItemId,
   }) {
+    if (preferredItemId != null && preferredItemId.isNotEmpty) {
+      for (final item in inventoryItems) {
+        if (item.id == preferredItemId) return item;
+      }
+    }
+
     final matClean = material.trim().toLowerCase();
     final targetColor =
         findVoxelColor(value: colorValue, name: colorName, hex: colorHex);
 
+    final matching = <InventoryItem>[];
     for (final item in inventoryItems) {
       if (item.material.trim().toLowerCase() == matClean) {
         if (item.color.trim().toLowerCase() == targetColor.name.toLowerCase() ||
             item.colorHex.replaceAll('#', '').toUpperCase() ==
                 targetColor.hex.replaceAll('#', '').toUpperCase()) {
-          return item;
+          matching.add(item);
         }
       }
     }
-    return null;
+
+    if (matching.isEmpty) return null;
+
+    // Prioridad 1: Bobina que ya está en uso con stock disponible
+    for (final item in matching) {
+      if (item.isEnUso && item.stockActual > 0) return item;
+    }
+
+    // Prioridad 2: Bobina con stock disponible
+    for (final item in matching) {
+      if (item.stockActual > 0) return item;
+    }
+
+    return matching.first;
   }
 
   double getAvailableStock(
@@ -287,39 +308,51 @@ class InventoryViewModel extends ChangeNotifier {
     String? colorName,
     String? colorHex,
     int? colorValue,
+    String? preferredItemId,
   }) {
     final item = findMatchingItem(
       material,
       colorName: colorName,
       colorHex: colorHex,
       colorValue: colorValue,
+      preferredItemId: preferredItemId,
     );
     return item?.stockActual ?? 0.0;
   }
 
-  /// Descuenta gramos del inventario. Retorna verdadero si la bobina quedó en estado de bajo stock (<= 20%).
+  /// Descuenta gramos del inventario y marca el carrete como en uso.
+  /// Retorna verdadero si la bobina quedó en estado de bajo stock (<= 20%).
   Future<bool> deductGrams(
     String material,
     double grams, {
     String? colorName,
     String? colorHex,
     int? colorValue,
+    String? preferredItemId,
   }) async {
     final item = findMatchingItem(
       material,
       colorName: colorName,
       colorHex: colorHex,
       colorValue: colorValue,
+      preferredItemId: preferredItemId,
     );
     if (item == null) return false;
 
     item.stockActual = (item.stockActual - grams).clamp(0.0, double.infinity);
+    item.enUso = true;
     await db.updateItem(item);
     await refresh();
 
     final isLow =
         item.stockInicial > 0 && (item.stockActual / item.stockInicial) <= 0.2;
     return isLow;
+  }
+
+  Future<void> toggleEnUso(InventoryItem item, bool enUso) async {
+    item.enUso = enUso;
+    await db.updateItem(item);
+    await refresh();
   }
 
   /// Devuelve gramos al inventario (ej. al eliminar o reducir una impresión).

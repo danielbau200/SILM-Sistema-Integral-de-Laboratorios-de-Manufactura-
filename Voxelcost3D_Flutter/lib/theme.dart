@@ -158,6 +158,8 @@ ThemeData voxelTheme() => ThemeData(
         onError: const Color(0xFFFFFFFF),
         onSurfaceVariant: textSecondary,
         surfaceContainerHighest: surfaceElevated,
+        outline: _isDarkMode ? const Color(0xFF383E4B) : const Color(0xFFE2E4E9),
+        outlineVariant: _isDarkMode ? const Color(0xFF282C35) : const Color(0xFFEAECEF),
       ),
       appBarTheme: AppBarTheme(
         backgroundColor: bgBase,
@@ -316,13 +318,23 @@ Widget formCard({
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: surfaceCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderSubtle),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: _isDarkMode
+              ? Colors.white.withValues(alpha: 0.08)
+              : const Color(0xFFE8EAEE),
+          width: 1,
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x33000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: Colors.black.withValues(alpha: _isDarkMode ? 0.35 : 0.04),
+            blurRadius: 18,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: _isDarkMode ? 0.2 : 0.015),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
           ),
         ],
       ),

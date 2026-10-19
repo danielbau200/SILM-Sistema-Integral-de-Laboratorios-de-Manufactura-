@@ -577,18 +577,42 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Nuevo pedido',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: Theme.of(context).colorScheme.onSurface,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withValues(
+                            alpha: Theme.of(context).brightness == Brightness.dark
+                                ? 0.20
+                                : 0.10,
+                          ),
+                      borderRadius: BorderRadius.circular(8),
                     ),
+                    child: Icon(
+                      Icons.post_add_rounded,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Nuevo pedido',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                  ),
+                ],
               ),
-              OutlinedButton.icon(
+              FilledButton.tonalIcon(
                 onPressed: () => setState(() => _expanded = false),
                 icon: const Icon(
                   Icons.close_rounded,
-                  size: 16,
+                  size: 15,
                 ),
                 label: const Text(
                   'Cerrar formulario de pedido',
@@ -597,15 +621,16 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                style: OutlinedButton.styleFrom(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).brightness == Brightness.dark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : const Color(0xFFF0F2F5),
                   foregroundColor: Theme.of(context).colorScheme.onSurface,
+                  elevation: 0,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  side: BorderSide(
-                    color: Theme.of(context).colorScheme.outlineVariant,
+                    borderRadius: BorderRadius.circular(9),
                   ),
                 ),
               ),
@@ -693,15 +718,59 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
 
   Widget _buildForm(BuildContext context, double maxWidth) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       key: const ValueKey('order_draft_template'),
-      padding: EdgeInsets.all(maxWidth < 600 ? 16 : 22),
+      padding: EdgeInsets.all(maxWidth < 600 ? 16 : 24),
       decoration: _cardDecoration(theme),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(
+                    alpha: isDark ? 0.22 : 0.12,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.assignment_outlined,
+                  size: 20,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Requisición de Materiales e Insumos',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Rellena los datos de los filamentos o repuestos y agrégalos a la tabla de pedidos.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
           for (var index = 0; index < _orderDrafts.length; index++) ...[
-            if (index > 0) const SizedBox(height: 14),
+            if (index > 0) const SizedBox(height: 16),
             _buildOrderDraftForm(
               context,
               maxWidth,
@@ -721,7 +790,7 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     int draftIndex,
   ) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
     final sharedDraft = _orderDrafts.first;
     final pageInset =
         widget.embedded ? 0.0 : (maxWidth < 600 ? 14.0 : 24.0) * 2;
@@ -741,301 +810,531 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Pedido ${draftIndex + 1}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1B1E26) : const Color(0xFFF9FAFC),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.07)
+                  : const Color(0xFFE9EBEF),
+              width: 1,
             ),
-            if (draftIndex > 0)
-              IconButton(
-                key: ValueKey('remove_order_draft_$draftIndex'),
-                tooltip: 'Quitar pedido',
-                onPressed: () => _removeOrderDraft(draft),
-                icon: const Icon(Icons.remove_circle_outline_rounded),
-                color: theme.colorScheme.error,
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _textInput(
-          context,
-          key: ValueKey('order_link_${draft.id}'),
-          controller: draft.linkController,
-          label: 'Link de la página donde se encontró el material',
-          hint: 'https://...',
-          keyboardType: TextInputType.url,
-          suffixIcon: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: 'Pegar enlace',
-                onPressed: () async {
-                  final data = await Clipboard.getData(Clipboard.kTextPlain);
-                  if (data?.text != null && data!.text!.trim().isNotEmpty) {
-                    draft.linkController.text = data.text!.trim();
-                    setState(() {});
-                  }
-                },
-                icon: const Icon(Icons.content_paste_rounded, size: 20),
-              ),
-              IconButton(
-                tooltip: 'Abrir página web',
-                onPressed: () => _openPageLink(draft.linkController.text),
-                icon: const Icon(Icons.open_in_browser_rounded, size: 20),
-              ),
-            ],
           ),
-        ),
-        const SizedBox(height: 20),
-        _formSectionTitle(context, 'Material y color'),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final materialColumns = constraints.maxWidth >= 660
-                ? 3
-                : constraints.maxWidth >= 620
-                    ? 2
-                    : 1;
-            final materialFieldWidth =
-                (constraints.maxWidth - 12 * (materialColumns - 1)) /
-                    materialColumns;
-            return Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                SizedBox(
-                  width: materialFieldWidth,
-                  child: _dropdown(
-                    context,
-                    key: ValueKey('order_material_$draftIndex'),
-                    label: 'Material',
-                    value: draft.selectedMaterial,
-                    options: [..._materials, _otro],
-                    hint: 'Elegir material',
-                    onChanged: (value) =>
-                        setState(() => draft.selectedMaterial = value),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(
+                        alpha: isDark ? 0.22 : 0.12,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.inventory_2_outlined,
+                            size: 14, color: theme.colorScheme.primary),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Pedido ${draftIndex + 1}',
+                          style: TextStyle(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  if (draft.selectedMaterial != null &&
+                      draft.selectedMaterial!.isNotEmpty) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white10
+                            : Colors.black.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${draft.selectedMaterial} · ${draft.selectedColor ?? "Sin color"}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  if (draftIndex > 0)
+                    IconButton(
+                      key: ValueKey('remove_order_draft_$draftIndex'),
+                      tooltip: 'Quitar pedido',
+                      onPressed: () => _removeOrderDraft(draft),
+                      icon: const Icon(Icons.remove_circle_outline_rounded,
+                          size: 18),
+                      color: theme.colorScheme.error,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _textInput(
+                context,
+                key: ValueKey('order_link_${draft.id}'),
+                controller: draft.linkController,
+                label: 'Link de la página donde se encontró el material',
+                hint: 'https://...',
+                keyboardType: TextInputType.url,
+                suffixIcon: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Pegar enlace',
+                      onPressed: () async {
+                        final data =
+                            await Clipboard.getData(Clipboard.kTextPlain);
+                        if (data?.text != null &&
+                            data!.text!.trim().isNotEmpty) {
+                          draft.linkController.text = data.text!.trim();
+                          setState(() {});
+                        }
+                      },
+                      icon: const Icon(Icons.content_paste_rounded, size: 20),
+                    ),
+                    IconButton(
+                      tooltip: 'Abrir página web',
+                      onPressed: () =>
+                          _openPageLink(draft.linkController.text),
+                      icon:
+                          const Icon(Icons.open_in_browser_rounded, size: 20),
+                    ),
+                  ],
                 ),
-                SizedBox(
-                  width: materialFieldWidth,
-                  child: _filamentColorDropdown(context, draft),
-                ),
-                SizedBox(
-                  width: materialFieldWidth,
-                  child: _weightInput(
-                    context,
-                    controller: draft.spoolWeightController,
-                    label: 'Peso del carrete',
-                    hint: '1kg, un kilo y medio, 500 g',
-                  ),
+              ),
+              _formSectionTitle(context, 'Material y color',
+                  icon: Icons.palette_outlined),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final materialColumns = constraints.maxWidth >= 660
+                      ? 3
+                      : constraints.maxWidth >= 620
+                          ? 2
+                          : 1;
+                  final materialFieldWidth =
+                      (constraints.maxWidth - 12 * (materialColumns - 1)) /
+                          materialColumns;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SizedBox(
+                        width: materialFieldWidth,
+                        child: _dropdown(
+                          context,
+                          key: ValueKey('order_material_$draftIndex'),
+                          label: 'Material',
+                          value: draft.selectedMaterial,
+                          options: [..._materials, _otro],
+                          hint: 'Elegir material',
+                          onChanged: (value) =>
+                              setState(() => draft.selectedMaterial = value),
+                        ),
+                      ),
+                      SizedBox(
+                        width: materialFieldWidth,
+                        child: _filamentColorDropdown(context, draft),
+                      ),
+                      SizedBox(
+                        width: materialFieldWidth,
+                        child: _weightInput(
+                          context,
+                          controller: draft.spoolWeightController,
+                          label: 'Peso del carrete',
+                          hint: '1kg, un kilo y medio, 500 g',
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              if (draft.selectedMaterial == _otro ||
+                  draft.selectedColor == _otro) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    if (draft.selectedMaterial == _otro)
+                      field(_textInput(
+                        context,
+                        controller: draft.manualMaterialController,
+                        label: 'Escribe el material',
+                        hint: 'Ej. PLA con fibra de carbono',
+                      )),
+                    if (draft.selectedColor == _otro)
+                      field(_manualColorInput(context, draft)),
+                  ],
                 ),
               ],
-            );
-          },
-        ),
-        if (draft.selectedMaterial == _otro ||
-            draft.selectedColor == _otro) ...[
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              if (draft.selectedMaterial == _otro)
-                field(_textInput(
-                  context,
-                  controller: draft.manualMaterialController,
-                  label: 'Escribe el material',
-                  hint: 'Ej. PLA con fibra de carbono',
-                )),
-              if (draft.selectedColor == _otro)
-                field(_manualColorInput(context, draft)),
             ],
           ),
-        ],
-        if (draftIndex == _orderDrafts.length - 1)
+        ),
+        if (draftIndex == _orderDrafts.length - 1) ...[
           Align(
             alignment: Alignment.centerLeft,
             child: OutlinedButton.icon(
               key: ValueKey('add_order_draft_$draftIndex'),
               onPressed: () => setState(() => _orderDrafts.add(_OrderDraft())),
-              icon: const Icon(Icons.add_rounded, size: 18),
+              icon: const Icon(Icons.add_rounded, size: 16),
               label: const Text('Agregar otro pedido'),
               style: OutlinedButton.styleFrom(
+                backgroundColor: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : const Color(0xFFF4F6F9),
+                foregroundColor: theme.colorScheme.primary,
+                side: BorderSide(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : const Color(0xFFE5E7EB),
+                ),
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
           ),
-        if (draftIndex == _orderDrafts.length - 1) ...[
-          const SizedBox(height: 24),
-          Divider(
-            height: 1,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: 20),
-          _formSectionTitle(context, 'Urgencia en el laboratorio'),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [field(_urgencyDropdown(context, sharedDraft))],
-          ),
-          if (sharedDraft.selectedUrgency != null) ...[
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1B1E26) : const Color(0xFFF9FAFC),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.07)
+                    : const Color(0xFFE9EBEF),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                field(
-                  _textInput(
-                    context,
-                    controller: sharedDraft.urgencyTypeController,
-                    label: 'Tipo de urgencia',
-                    hint: 'Ej. Reposición urgente',
+                _formSectionTitle(context, 'Urgencia en el laboratorio',
+                    icon: Icons.bolt_rounded),
+                Text(
+                  'Prioridad para la reposición o compra de este material en el laboratorio.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 12,
                   ),
-                  width: detailFieldWidth,
                 ),
-                field(
-                  _textInput(
-                    context,
-                    controller: sharedDraft.urgencyDetailsController,
-                    label: 'Urgencia en texto',
-                    hint: 'Ej. Falta para la entrega de mañana',
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    SizedBox(
+                      width: availableWidth >= 620 ? 320 : availableWidth,
+                      child: _urgencyDropdown(context, sharedDraft),
+                    ),
+                  ],
+                ),
+                if (sharedDraft.selectedUrgency != null) ...[
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      field(
+                        _textInput(
+                          context,
+                          controller: sharedDraft.urgencyTypeController,
+                          label: 'Tipo de urgencia',
+                          hint: 'Ej. Reposición urgente',
+                        ),
+                        width: detailFieldWidth,
+                      ),
+                      field(
+                        _textInput(
+                          context,
+                          controller: sharedDraft.urgencyDetailsController,
+                          label: 'Urgencia en texto',
+                          hint: 'Ej. Falta para la entrega de mañana',
+                        ),
+                        width: detailFieldWidth,
+                      ),
+                    ],
                   ),
-                  width: detailFieldWidth,
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1B1E26) : const Color(0xFFF9FAFC),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.07)
+                    : const Color(0xFFE9EBEF),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _formSectionTitle(context, 'Consumibles',
+                    icon: Icons.construction_outlined),
+                Text(
+                  'Boquillas, pegamento o piezas de repuesto adicionales (opcional).',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ...sharedDraft.consumableForms.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final form = entry.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Wrap(
+                      key: ValueKey('consumable_row_${sharedDraft.id}_$index'),
+                      spacing: 12,
+                      runSpacing: 12,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        field(_dropdown(
+                          context,
+                          key: ValueKey(
+                            'consumable_dropdown_${sharedDraft.id}_$index',
+                          ),
+                          label: 'Consumible ${index + 1}',
+                          value: form.selected,
+                          options: [..._consumables, _otro],
+                          hint: 'Elegir consumible',
+                          onChanged: (value) =>
+                              setState(() => form.selected = value),
+                        )),
+                        if (form.selected == _otro)
+                          field(_textInput(
+                            context,
+                            controller: form.manualController,
+                            label: 'Escribe el consumible',
+                            hint: 'Ej. Boquilla de 0.4 mm',
+                          )),
+                        if (index > 0)
+                          IconButton(
+                            key: ValueKey(
+                              'remove_consumable_${sharedDraft.id}_$index',
+                            ),
+                            tooltip: 'Quitar consumible',
+                            onPressed: () => setState(() {
+                              sharedDraft.consumableForms
+                                  .removeAt(index)
+                                  .dispose();
+                            }),
+                            icon: const Icon(
+                                Icons.remove_circle_outline_rounded),
+                            color: theme.colorScheme.error,
+                          ),
+                      ],
+                    ),
+                  );
+                }),
+                FilledButton.tonalIcon(
+                  key: ValueKey('add_consumable_${sharedDraft.id}'),
+                  onPressed: () => setState(
+                    () => sharedDraft.consumableForms.add(_ConsumableForm()),
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 15),
+                  label: const Text('Agregar otro consumible'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: isDark
+                        ? Colors.white.withValues(alpha: 0.06)
+                        : const Color(0xFFF0F2F5),
+                    foregroundColor: theme.colorScheme.primary,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                  ),
                 ),
               ],
             ),
-          ],
-          const SizedBox(height: 24),
-          Divider(
-            height: 1,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
           ),
-          const SizedBox(height: 20),
-          _formSectionTitle(context, 'Consumibles'),
-          ...sharedDraft.consumableForms.asMap().entries.map((entry) {
-            final index = entry.key;
-            final form = entry.value;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Wrap(
-                key: ValueKey('consumable_row_${sharedDraft.id}_$index'),
-                spacing: 12,
-                runSpacing: 12,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  field(_dropdown(
-                    context,
-                    key: ValueKey(
-                      'consumable_dropdown_${sharedDraft.id}_$index',
-                    ),
-                    label: 'Consumible ${index + 1}',
-                    value: form.selected,
-                    options: [..._consumables, _otro],
-                    hint: 'Elegir consumible',
-                    onChanged: (value) => setState(() => form.selected = value),
-                  )),
-                  if (form.selected == _otro)
-                    field(_textInput(
-                      context,
-                      controller: form.manualController,
-                      label: 'Escribe el consumible',
-                      hint: 'Ej. Boquilla de 0.4 mm',
-                    )),
-                  if (index > 0)
-                    IconButton(
-                      key: ValueKey(
-                        'remove_consumable_${sharedDraft.id}_$index',
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1B1E26) : const Color(0xFFF9FAFC),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.07)
+                    : const Color(0xFFE9EBEF),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _formSectionTitle(context, 'Costo del material',
+                    icon: Icons.payments_outlined),
+                Text(
+                  'Monto aproximado de compra y confirmación para enviar a la tabla.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  children: [
+                    SizedBox(
+                      width: 220,
+                      child: _textInput(
+                        context,
+                        controller: sharedDraft.costController,
+                        label: 'Costo (\$)',
+                        hint: '0',
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
                       ),
-                      tooltip: 'Quitar consumible',
-                      onPressed: () => setState(() {
-                        sharedDraft.consumableForms.removeAt(index).dispose();
-                      }),
-                      icon: const Icon(Icons.remove_circle_outline_rounded),
-                      color: theme.colorScheme.error,
                     ),
-                ],
-              ),
-            );
-          }),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            children: [
-              TextButton.icon(
-                key: ValueKey('add_consumable_${sharedDraft.id}'),
-                onPressed: () => setState(
-                  () => sharedDraft.consumableForms.add(_ConsumableForm()),
-                ),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Agregar otro consumible'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Divider(
-            height: 1,
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
-          ),
-          const SizedBox(height: 20),
-          _formSectionTitle(context, 'Costo del material'),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.end,
-            children: [
-              field(_textInput(
-                context,
-                controller: sharedDraft.costController,
-                label: 'Costo (\$)',
-                hint: '0',
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-              )),
-              SizedBox(
-                height: 48,
-                child: FilledButton.icon(
-                  key: const ValueKey('submit_order_0'),
-                  onPressed: _loading || _saving ? null : _addOrder,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text(
-                    'Agregar a la tabla',
-                    style: TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 22),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                    SizedBox(
+                      height: 44,
+                      child: FilledButton.icon(
+                        key: const ValueKey('submit_order_0'),
+                        onPressed: _loading || _saving ? null : _addOrder,
+                        icon: const Icon(Icons.add_rounded, size: 18),
+                        label: const Text(
+                          'Agregar a la tabla',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 13),
+                        ),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          backgroundColor: const Color(0xFF0071E3),
+                          foregroundColor: Colors.white,
+                          elevation: 1,
+                          shadowColor:
+                              const Color(0xFF0071E3).withValues(alpha: 0.35),
+                        ),
+                      ),
                     ),
-                    backgroundColor: colors.primary,
-                    foregroundColor: colors.onPrimary,
-                  ),
+                  ],
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ],
     );
   }
 
-  Widget _formSectionTitle(BuildContext context, String title) {
+  InputDecoration _macInputDecoration(
+    BuildContext context, {
+    String? hintText,
+    Widget? suffixIcon,
+    Color? customFill,
+    EdgeInsetsGeometry? contentPadding,
+  }) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : const Color(0xFFE5E7EB);
+
+    return InputDecoration(
+      hintText: hintText,
+      hintStyle: TextStyle(
+        color: isDark ? const Color(0xFF757D8A) : const Color(0xFF9CA3AF),
+        fontSize: 13,
+      ),
+      suffixIcon: suffixIcon,
+      isDense: true,
+      filled: true,
+      fillColor: customFill ??
+          (isDark ? const Color(0xFF20242D) : const Color(0xFFF5F6F9)),
+      contentPadding: contentPadding ??
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: borderColor, width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: borderColor, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(10),
+        borderSide: BorderSide(color: theme.colorScheme.primary, width: 1.8),
+      ),
+    );
+  }
+
+  Widget _formSectionTitle(
+    BuildContext context,
+    String title, {
+    IconData? icon,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Text(
-        title,
-        style: theme.textTheme.labelLarge?.copyWith(
-          fontWeight: FontWeight.w700,
-          color: theme.colorScheme.onSurface,
-        ),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          if (icon != null) ...[
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(
+                  alpha: isDark ? 0.20 : 0.09,
+                ),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Icon(
+                icon,
+                size: 13,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Text(
+            title,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              letterSpacing: -0.2,
+              color: theme.colorScheme.onSurface,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1057,6 +1356,8 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
         Text(
           label,
           style: theme.textTheme.labelMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
@@ -1067,35 +1368,12 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
           keyboardType: keyboardType,
           onChanged: onChanged,
           style: theme.textTheme.bodyMedium,
-          decoration: InputDecoration(
+          decoration: _macInputDecoration(
+            context,
             hintText: hint,
             suffixIcon: suffixIcon,
-            isDense: true,
-            filled: true,
-            fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.48 : 0.55,
-            ),
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(11),
-              borderSide: BorderSide(
-                color: theme.colorScheme.outlineVariant,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(11),
-              borderSide: BorderSide(
-                color: theme.colorScheme.outlineVariant,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(11),
-              borderSide: BorderSide(
-                color: theme.colorScheme.primary,
-                width: 1.6,
-              ),
-            ),
           ),
         ),
       ],
@@ -1155,6 +1433,8 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
         Text(
           label,
           style: theme.textTheme.labelMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
@@ -1173,17 +1453,11 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
               )
               .toList(),
           onChanged: onChanged,
-          decoration: InputDecoration(
-            isDense: true,
-            filled: true,
-            fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.48 : 0.55,
-            ),
+          decoration: _macInputDecoration(
+            context,
+            hintText: hint,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(11),
-            ),
           ),
         ),
       ],
@@ -1280,17 +1554,11 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
           }).toList(),
           selectedItemBuilder: (context) => selectedItems,
           onChanged: (value) => _selectFilamentColor(draft, value),
-          decoration: InputDecoration(
-            isDense: true,
-            filled: true,
-            fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.48 : 0.55,
-            ),
+          decoration: _macInputDecoration(
+            context,
+            hintText: 'Elegir color',
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(11),
-            ),
           ),
         ),
       ],
@@ -1447,26 +1715,11 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
               )
               .toList(),
           onChanged: (value) => setState(() => draft.selectedUrgency = value),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: selectedColor ??
-                theme.colorScheme.surfaceContainerHighest.withValues(
-                  alpha: theme.brightness == Brightness.dark ? 0.48 : 0.55,
-                ),
+          decoration: _macInputDecoration(
+            context,
+            customFill: selectedColor,
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(11),
-              borderSide: BorderSide(
-                color: theme.colorScheme.outlineVariant,
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(11),
-              borderSide: BorderSide(
-                color: theme.colorScheme.outlineVariant,
-              ),
-            ),
           ),
           dropdownColor: theme.colorScheme.surface,
           iconEnabledColor: selectedForeground,
@@ -1487,22 +1740,89 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-            child: Text(
-              'Tabla de pedidos',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(
+                      alpha: theme.brightness == Brightness.dark ? 0.20 : 0.09,
+                    ),
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Icon(
+                    Icons.view_list_rounded,
+                    size: 14,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Text(
+                  'Tabla de pedidos',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                if (_orders.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primary.withValues(
+                        alpha: theme.brightness == Brightness.dark ? 0.2 : 0.1,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${_orders.length}',
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           if (_orders.isEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 22),
-              child: Text(
-                'Aún no hay pedidos',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 18),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.table_rows_outlined,
+                      size: 32,
+                      color: theme.colorScheme.onSurfaceVariant
+                          .withValues(alpha: 0.4),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Aún no hay pedidos',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Completa el formulario para agregar insumos a esta tabla.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant
+                            .withValues(alpha: 0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             )
@@ -1518,7 +1838,18 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                     child: DataTable(
                       columnSpacing: 22,
                       headingRowColor: WidgetStatePropertyAll(
-                        theme.colorScheme.surfaceContainerHighest,
+                        theme.brightness == Brightness.dark
+                            ? const Color(0xFF222630)
+                            : const Color(0xFFF7F8FA),
+                      ),
+                      dividerThickness: 0.5,
+                      border: TableBorder(
+                        horizontalInside: BorderSide(
+                          color: theme.brightness == Brightness.dark
+                              ? Colors.white.withValues(alpha: 0.04)
+                              : const Color(0xFFF0F2F5),
+                          width: 0.8,
+                        ),
                       ),
                       columns: const [
                         DataColumn(label: Text('Página')),
@@ -1567,7 +1898,12 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                                       shape: BoxShape.circle,
                                       color: _filamentColor(order.color),
                                       border: Border.all(
-                                        color: theme.colorScheme.outlineVariant,
+                                        color: theme.brightness ==
+                                                Brightness.dark
+                                            ? Colors.white
+                                                .withValues(alpha: 0.12)
+                                            : const Color(0xFFD1D5DB),
+                                        width: 0.8,
                                       ),
                                     ),
                                   ),
@@ -1676,20 +2012,35 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     );
   }
 
-  BoxDecoration _cardDecoration(ThemeData theme) => BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.16 : 0.06,
-            ),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
+  BoxDecoration _cardDecoration(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return BoxDecoration(
+      color: theme.colorScheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : const Color(0xFFE8EAEE),
+        width: 1,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(
+            alpha: isDark ? 0.35 : 0.04,
           ),
-        ],
-      );
+          blurRadius: 20,
+          offset: const Offset(0, 6),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(
+            alpha: isDark ? 0.20 : 0.015,
+          ),
+          blurRadius: 4,
+          offset: const Offset(0, 1),
+        ),
+      ],
+    );
+  }
 
   Color _urgencyColor(BuildContext context, String urgency) {
     switch (urgency) {

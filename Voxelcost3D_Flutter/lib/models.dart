@@ -9,6 +9,7 @@ class MaterialData {
   bool combine;
   String? brand;
   String? finish;
+  String? spoolId;
 
   MaterialData({
     required this.type,
@@ -18,6 +19,7 @@ class MaterialData {
     this.combine = true,
     this.brand,
     this.finish,
+    this.spoolId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -28,6 +30,7 @@ class MaterialData {
         'combine': combine,
         'brand': brand,
         'finish': finish,
+        'spoolId': spoolId,
       };
 
   factory MaterialData.fromJson(Map<String, dynamic> json) => MaterialData(
@@ -38,6 +41,7 @@ class MaterialData {
         combine: json['combine'] as bool? ?? true,
         brand: json['brand'] as String?,
         finish: json['finish'] as String?,
+        spoolId: json['spoolId'] as String?,
       );
 }
 
@@ -159,6 +163,7 @@ class InventoryItem {
   int? tempBed;
   String? location;
   String? notes;
+  bool enUso;
 
   InventoryItem({
     String? id,
@@ -176,6 +181,7 @@ class InventoryItem {
     this.tempBed,
     this.location,
     this.notes,
+    this.enUso = false,
   }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString();
 
   double get costPerGram => stockInicial > 0 ? price / stockInicial : 0.0;
@@ -184,6 +190,10 @@ class InventoryItem {
       stockInicial > 0 ? (stockActual / stockInicial).clamp(0.0, 1.0) : 0.0;
   bool get isLowStock => stockInicial <= 0 || remainingRatio <= 0.2;
   bool get isDepleted => stockActual <= 0.001;
+  bool get isEnUso => enUso || (stockActual < stockInicial && stockActual > 0.001);
+  bool get isSellado => !isEnUso && stockActual >= stockInicial && stockActual > 0.001;
+  String get effectiveLocation =>
+      (location != null && location!.trim().isNotEmpty) ? location!.trim() : 'CMI';
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -201,6 +211,7 @@ class InventoryItem {
         'tempBed': tempBed,
         'location': location,
         'notes': notes,
+        'enUso': enUso ? 1 : 0,
       };
 
   factory InventoryItem.fromMap(Map<String, dynamic> map) => InventoryItem(
@@ -219,6 +230,7 @@ class InventoryItem {
         tempBed: (map['tempBed'] as num?)?.toInt(),
         location: map['location'] as String?,
         notes: map['notes'] as String?,
+        enUso: map['enUso'] == 1 || map['enUso'] == true,
       );
 
   InventoryItem copyWith({
@@ -237,6 +249,7 @@ class InventoryItem {
     int? tempBed,
     String? location,
     String? notes,
+    bool? enUso,
   }) {
     return InventoryItem(
       id: id ?? this.id,
@@ -254,6 +267,7 @@ class InventoryItem {
       tempBed: tempBed ?? this.tempBed,
       location: location ?? this.location,
       notes: notes ?? this.notes,
+      enUso: enUso ?? this.enUso,
     );
   }
 }
