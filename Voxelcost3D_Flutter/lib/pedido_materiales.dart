@@ -9,6 +9,7 @@ import 'theme.dart' show SidebarToggleIcon, darkAppBar, voxelColorPalette;
 
 class PedidoMaterialesWidget extends StatefulWidget {
   final bool embedded;
+  final VoidCallback? onOrdersChanged;
   final VoidCallback? onToggleMenu;
   final VoidCallback? onHoverMenu;
   final bool isPinned;
@@ -16,6 +17,7 @@ class PedidoMaterialesWidget extends StatefulWidget {
   const PedidoMaterialesWidget({
     super.key,
     this.embedded = false,
+    this.onOrdersChanged,
     this.onToggleMenu,
     this.onHoverMenu,
     this.isPinned = false,
@@ -61,6 +63,7 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
   final List<String> _colors = List<String>.from(_defaultColors);
   final List<String> _consumables = [];
   final List<_MaterialOrder> _orders = [];
+  final ScrollController _ordersTableScrollController = ScrollController();
 
   bool _expanded = false;
   bool _loading = true;
@@ -92,6 +95,15 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     );
   }
 
+  Widget buildOrdersList(BuildContext context) {
+    if (_loading) return const LinearProgressIndicator(minHeight: 3);
+    return _buildOrdersTable(context, title: 'Lista de pedido');
+  }
+
+  void _notifyOrdersChanged() {
+    widget.onOrdersChanged?.call();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -100,6 +112,7 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
 
   @override
   void dispose() {
+    _ordersTableScrollController.dispose();
     for (final draft in _orderDrafts) {
       draft.dispose();
     }
@@ -139,7 +152,10 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
         isError: true,
       );
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        _notifyOrdersChanged();
+      }
     }
   }
 
@@ -242,41 +258,77 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
 
   Future<void> _addOrder() async {
     final sharedDraft = _orderDrafts.first;
-    if (sharedDraft.selectedUrgency == null) {
-      _showMessage('Selecciona el nivel de urgencia.', isError: true);
-      return;
-    }
-    final urgencyType = sharedDraft.urgencyTypeController.text.trim();
-    if (urgencyType.isEmpty) {
-      _showMessage('Escribe el tipo de urgencia.', isError: true);
-      return;
-    }
-    final urgencyDetails = sharedDraft.urgencyDetailsController.text.trim();
-    if (urgencyDetails.isEmpty) {
-      _showMessage('Escribe la urgencia en texto.', isError: true);
-      return;
-    }
-
     final consumables = <String>[];
+    final consumableRequests = <_ConsumableRequest>[];
     final newConsumables = <String>[];
-    for (final form in sharedDraft.consumableForms) {
+    for (var index = 0; index < sharedDraft.consumableForms.length; index++) {
+      final form = sharedDraft.consumableForms[index];
       if (form.selected == null) continue;
+      if (form.selectedUrgency == null) {
+        _showMessage(
+          'Selecciona el nivel de urgencia del consumible ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
+      final urgencyType = form.urgencyTypeController.text.trim();
+      if (urgencyType.isEmpty) {
+        _showMessage(
+          'Escribe el tipo de urgencia del consumible ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
+      final urgencyDetails = form.urgencyDetailsController.text.trim();
+      if (urgencyDetails.isEmpty) {
+        _showMessage(
+          'Escribe la urgencia en texto del consumible ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
+      if (form.selected == null) continue;
+
+      final enteredLink = form.linkController.text.trim();
+      final consumableLink =
+          enteredLink.isEmpty ? null : _normalizedPageLink(enteredLink);
+      if (enteredLink.isNotEmpty && consumableLink == null) {
+        _showMessage(
+          'Escribe un enlace válido para el consumible ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
       final consumable = _resolveManualValue(
         selection: form.selected,
         controller: form.manualController,
         fieldName: 'consumible',
       );
       if (consumable == null) return;
+      final consumableCostText =
+          form.costController.text.trim().replaceAll(',', '.');
+      final consumableCost = consumableCostText.isEmpty
+          ? 0.0
+          : double.tryParse(consumableCostText);
+      if (consumableCost == null || consumableCost < 0) {
+        _showMessage(
+          'Escribe un costo válido para el consumible ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
       consumables.add(consumable);
       if (form.selected == _otro) newConsumables.add(consumable);
-    }
-
-    final costText =
-        sharedDraft.costController.text.trim().replaceAll(',', '.');
-    final cost = costText.isEmpty ? 0.0 : double.tryParse(costText);
-    if (cost == null || cost < 0) {
-      _showMessage('Escribe un costo válido en pesos.', isError: true);
-      return;
+      consumableRequests.add(
+        _ConsumableRequest(
+          name: consumable,
+          link: consumableLink,
+          urgency: form.selectedUrgency!,
+          urgencyType: urgencyType,
+          urgencyDetails: urgencyDetails,
+          cost: consumableCost,
+        ),
+      );
     }
 
     final orders = <_MaterialOrder>[];
@@ -285,6 +337,39 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     final now = DateTime.now().microsecondsSinceEpoch;
     for (var index = 0; index < _orderDrafts.length; index++) {
       final draft = _orderDrafts[index];
+      if (draft.selectedUrgency == null) {
+        _showMessage(
+          'Selecciona el nivel de urgencia del pedido ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
+      final urgencyType = draft.urgencyTypeController.text.trim();
+      if (urgencyType.isEmpty) {
+        _showMessage(
+          'Escribe el tipo de urgencia del pedido ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
+      final urgencyDetails = draft.urgencyDetailsController.text.trim();
+      if (urgencyDetails.isEmpty) {
+        _showMessage(
+          'Escribe la urgencia en texto del pedido ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
+      final costText = draft.costController.text.trim().replaceAll(',', '.');
+      final cost = costText.isEmpty ? 0.0 : double.tryParse(costText);
+      if (cost == null || cost < 0) {
+        _showMessage(
+          'Escribe un costo válido para el pedido ${index + 1}.',
+          isError: true,
+        );
+        return;
+      }
+
       final link = _normalizedPageLink(draft.linkController.text);
       if (link == null) {
         _showMessage(
@@ -342,10 +427,11 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
           link: link,
           material: material,
           color: color,
-          urgency: sharedDraft.selectedUrgency!,
+          urgency: draft.selectedUrgency!,
           urgencyType: urgencyType,
           urgencyDetails: urgencyDetails,
           consumables: consumables,
+          consumableRequests: consumableRequests,
           spoolGrams: spoolGrams,
           usedGrams: null,
           cost: cost,
@@ -366,6 +452,7 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
         ..add(_OrderDraft());
     });
     await _saveData();
+    _notifyOrdersChanged();
   }
 
   void _removeOrderDraft(_OrderDraft draft) {
@@ -377,6 +464,517 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
   Future<void> _removeOrder(_MaterialOrder order) async {
     setState(() => _orders.removeWhere((item) => item.id == order.id));
     await _saveData();
+    _notifyOrdersChanged();
+  }
+
+  Future<void> _editOrder(_MaterialOrder order) async {
+    final draft = _OrderEditDraft(order);
+    try {
+      final updatedOrder = await showDialog<_MaterialOrder>(
+        context: context,
+        builder: (dialogContext) {
+          final theme = Theme.of(dialogContext);
+          final colors = theme.colorScheme;
+          String? selectedUrgency = order.urgency;
+          String? validationError;
+
+          Widget input(
+            String label,
+            TextEditingController controller, {
+            String? hint,
+            TextInputType? keyboardType,
+            Key? key,
+          }) =>
+              _textInput(
+                dialogContext,
+                key: key,
+                controller: controller,
+                label: label,
+                hint: hint ?? '',
+                keyboardType: keyboardType,
+              );
+
+          return StatefulBuilder(
+            builder: (dialogContext, setDialogState) => AlertDialog(
+              title: const Text('Editar pedido'),
+              content: SizedBox(
+                width: 720,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      input(
+                        'Link de la página',
+                        draft.linkController,
+                        hint: 'https://...',
+                        keyboardType: TextInputType.url,
+                        key: const ValueKey('edit_order_link'),
+                      ),
+                      const SizedBox(height: 14),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final columns = constraints.maxWidth >= 600
+                              ? 3
+                              : constraints.maxWidth >= 400
+                                  ? 2
+                                  : 1;
+                          const spacing = 12.0;
+                          final fieldWidth =
+                              (constraints.maxWidth - spacing * (columns - 1)) /
+                                  columns;
+                          return Wrap(
+                            spacing: spacing,
+                            runSpacing: 14,
+                            children: [
+                              SizedBox(
+                                width: fieldWidth,
+                                child: input(
+                                  'Material',
+                                  draft.materialController,
+                                  hint: 'PLA',
+                                  key: const ValueKey('edit_order_material'),
+                                ),
+                              ),
+                              SizedBox(
+                                width: fieldWidth,
+                                child: input(
+                                  'Color',
+                                  draft.colorController,
+                                  hint: 'Negro',
+                                  key: const ValueKey('edit_order_color'),
+                                ),
+                              ),
+                              SizedBox(
+                                width: fieldWidth,
+                                child: input(
+                                  'Peso del carrete',
+                                  draft.weightController,
+                                  hint: '1 kg, 500 g',
+                                  key: const ValueKey('edit_order_weight'),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 20),
+                      _formSectionTitle(
+                        dialogContext,
+                        'Urgencia en el laboratorio',
+                        icon: Icons.bolt_rounded,
+                      ),
+                      const SizedBox(height: 8),
+                      LayoutBuilder(
+                        builder: (context, constraints) => Align(
+                          alignment: Alignment.centerLeft,
+                          child: SizedBox(
+                            width: constraints.maxWidth < 300
+                                ? constraints.maxWidth
+                                : 300,
+                            child: _urgencyDropdown(
+                              dialogContext,
+                              key: const ValueKey('edit_order_urgency'),
+                              label: 'Estatus de Urgencia',
+                              selectedUrgency: selectedUrgency,
+                              onChanged: (value) => setDialogState(() {
+                                selectedUrgency = value;
+                              }),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          const spacing = 12.0;
+                          final fieldWidth = constraints.maxWidth >= 600
+                              ? (constraints.maxWidth - spacing) / 2
+                              : constraints.maxWidth;
+                          return Wrap(
+                            spacing: spacing,
+                            runSpacing: 12,
+                            children: [
+                              SizedBox(
+                                width: fieldWidth,
+                                child: input(
+                                  'Tipo de urgencia',
+                                  draft.urgencyTypeController,
+                                  hint: 'Ej. Reposición urgente',
+                                  key: const ValueKey(
+                                    'edit_order_urgency_type',
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: fieldWidth,
+                                child: input(
+                                  'Urgencia en texto',
+                                  draft.urgencyDetailsController,
+                                  hint: 'Describe por qué se necesita',
+                                  key: const ValueKey(
+                                    'edit_order_urgency_details',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: 140,
+                          child: input(
+                            'Costo (\$)',
+                            draft.costController,
+                            hint: '0',
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            key: const ValueKey('edit_order_cost'),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const Divider(height: 1),
+                      const SizedBox(height: 20),
+                      _formSectionTitle(
+                        dialogContext,
+                        'Consumibles',
+                        icon: Icons.percent_rounded,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Edita el nombre y la urgencia de cada consumible.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ...draft.consumableDrafts.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final consumable = entry.value;
+                        return Container(
+                          key: ValueKey('edit_consumable_row_$index'),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.brightness == Brightness.dark
+                                ? colors.surfaceContainerHighest
+                                    .withValues(alpha: 0.35)
+                                : const Color(0xFFEEF8F6),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: theme.brightness == Brightness.dark
+                                  ? Colors.white.withValues(alpha: 0.08)
+                                  : const Color(0xFFDCE9E7),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      'Consumible ${index + 1}',
+                                      style:
+                                          theme.textTheme.titleSmall?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    key: ValueKey(
+                                      'edit_remove_consumable_$index',
+                                    ),
+                                    tooltip: 'Quitar consumible',
+                                    onPressed: () => setDialogState(() {
+                                      draft.consumableDrafts
+                                          .removeAt(index)
+                                          .dispose();
+                                    }),
+                                    icon: const Icon(
+                                      Icons.remove_circle_outline_rounded,
+                                    ),
+                                    color: colors.error,
+                                  ),
+                                ],
+                              ),
+                              input(
+                                'Link de donde se encontró el consumible',
+                                consumable.linkController,
+                                hint: 'https://...',
+                                keyboardType: TextInputType.url,
+                                key: ValueKey('edit_consumable_link_$index'),
+                              ),
+                              const SizedBox(height: 12),
+                              input(
+                                'Nombre del consumible',
+                                consumable.nameController,
+                                hint: 'Boquilla, pegamento...',
+                                key: ValueKey('edit_consumable_name_$index'),
+                              ),
+                              const SizedBox(height: 12),
+                              LayoutBuilder(
+                                builder: (context, constraints) => Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: SizedBox(
+                                    width: constraints.maxWidth < 300
+                                        ? constraints.maxWidth
+                                        : 300,
+                                    child: _urgencyDropdown(
+                                      dialogContext,
+                                      key: ValueKey(
+                                        'edit_consumable_urgency_$index',
+                                      ),
+                                      selectedUrgency: consumable.urgency,
+                                      onChanged: (value) =>
+                                          setDialogState(() {
+                                        consumable.urgency = value;
+                                      }),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  const spacing = 12.0;
+                                  final fieldWidth = constraints.maxWidth >= 580
+                                      ? (constraints.maxWidth - spacing) / 2
+                                      : constraints.maxWidth;
+                                  return Wrap(
+                                    spacing: spacing,
+                                    runSpacing: 12,
+                                    children: [
+                                      SizedBox(
+                                        width: fieldWidth,
+                                        child: input(
+                                          'Tipo de urgencia',
+                                          consumable.urgencyTypeController,
+                                          hint: 'Ej. Reposición urgente',
+                                          key: ValueKey(
+                                            'edit_consumable_type_$index',
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(
+                                        width: fieldWidth,
+                                        child: input(
+                                          'Urgencia en texto',
+                                          consumable.urgencyDetailsController,
+                                          hint: 'Describe por qué se necesita',
+                                          key: ValueKey(
+                                            'edit_consumable_details_$index',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: SizedBox(
+                                  width: 140,
+                                  child: input(
+                                    'Costo (\$)',
+                                    consumable.costController,
+                                    hint: '0',
+                                    keyboardType:
+                                        const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                    key: ValueKey(
+                                      'edit_consumable_cost_$index',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          key: const ValueKey('edit_add_consumable'),
+                          onPressed: () => setDialogState(
+                            () => draft.consumableDrafts.add(
+                              _ConsumableEditDraft(),
+                            ),
+                          ),
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Agregar otro consumible'),
+                        ),
+                      ),
+                      if (validationError != null) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          validationError!,
+                          key: const ValueKey('edit_order_error'),
+                          style: TextStyle(color: colors.error),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton.icon(
+                  key: const ValueKey('save_order_edits'),
+                  onPressed: () {
+                    final link = _normalizedPageLink(draft.linkController.text);
+                    final material = draft.materialController.text.trim();
+                    final color = draft.colorController.text.trim();
+                    final weightText = draft.weightController.text.trim();
+                    final spoolGrams = weightText.isEmpty
+                        ? null
+                        : parseWeightToGrams(weightText);
+                    final costText =
+                        draft.costController.text.trim().replaceAll(',', '.');
+                    final cost =
+                        costText.isEmpty ? 0.0 : double.tryParse(costText);
+                    if (link == null) {
+                      setDialogState(() => validationError =
+                          'Escribe un enlace válido (por ejemplo, https://tienda.com).');
+                      return;
+                    }
+                    if (material.isEmpty || color.isEmpty) {
+                      setDialogState(() => validationError =
+                          'El material y el color son obligatorios.');
+                      return;
+                    }
+                    final orderUrgency = selectedUrgency;
+                    if (orderUrgency == null) {
+                      setDialogState(() => validationError =
+                          'Selecciona el nivel de urgencia del pedido.');
+                      return;
+                    }
+                    if (draft.urgencyTypeController.text.trim().isEmpty ||
+                        draft.urgencyDetailsController.text.trim().isEmpty) {
+                      setDialogState(() => validationError =
+                          'Completa el tipo y el texto de urgencia del pedido.');
+                      return;
+                    }
+                    if (weightText.isNotEmpty && spoolGrams == null) {
+                      setDialogState(() => validationError =
+                          'Escribe un peso válido, por ejemplo 1 kg o 500 g.');
+                      return;
+                    }
+                    if (cost == null || cost < 0) {
+                      setDialogState(() => validationError =
+                          'Escribe un costo válido en pesos.');
+                      return;
+                    }
+
+                    final requests = <_ConsumableRequest>[];
+                    for (var index = 0;
+                        index < draft.consumableDrafts.length;
+                        index++) {
+                      final consumable = draft.consumableDrafts[index];
+                      final name = consumable.nameController.text.trim();
+                      if (name.isEmpty) {
+                        setDialogState(() => validationError =
+                            'Escribe el nombre del consumible ${index + 1} o quítalo.');
+                        return;
+                      }
+                      final consumableUrgency = consumable.urgency;
+                      final enteredLink = consumable.linkController.text.trim();
+                      final consumableLink = enteredLink.isEmpty
+                          ? null
+                          : _normalizedPageLink(enteredLink);
+                      if (enteredLink.isNotEmpty && consumableLink == null) {
+                        setDialogState(() => validationError =
+                            'Escribe un enlace válido para el consumible ${index + 1}.');
+                        return;
+                      }
+                      final consumableCostText = consumable.costController.text
+                          .trim()
+                          .replaceAll(',', '.');
+                      final consumableCost = consumableCostText.isEmpty
+                          ? 0.0
+                          : double.tryParse(consumableCostText);
+                      if (consumableCost == null || consumableCost < 0) {
+                        setDialogState(() => validationError =
+                            'Escribe un costo válido para el consumible ${index + 1}.');
+                        return;
+                      }
+                      if (consumableUrgency == null ||
+                          consumable.urgencyTypeController.text
+                              .trim()
+                              .isEmpty ||
+                          consumable.urgencyDetailsController.text
+                              .trim()
+                              .isEmpty) {
+                        setDialogState(() => validationError =
+                            'Completa la urgencia del consumible ${index + 1}.');
+                        return;
+                      }
+                      requests.add(
+                        _ConsumableRequest(
+                          name: name,
+                          link: consumableLink,
+                          urgency: consumableUrgency,
+                          urgencyType:
+                              consumable.urgencyTypeController.text.trim(),
+                          urgencyDetails:
+                              consumable.urgencyDetailsController.text.trim(),
+                          cost: consumableCost,
+                        ),
+                      );
+                    }
+
+                    Navigator.of(dialogContext).pop(
+                      _MaterialOrder(
+                        id: order.id,
+                        link: link,
+                        material: material,
+                        color: color,
+                        urgency: orderUrgency,
+                        urgencyType: draft.urgencyTypeController.text.trim(),
+                        urgencyDetails:
+                            draft.urgencyDetailsController.text.trim(),
+                        consumables:
+                            requests.map((request) => request.name).toList(),
+                        consumableRequests: requests,
+                        spoolGrams: spoolGrams,
+                        usedGrams: order.usedGrams,
+                        cost: cost,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Guardar cambios'),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+
+      if (updatedOrder == null || !mounted) return;
+      setState(() {
+        final orderIndex =
+            _orders.indexWhere((item) => item.id == updatedOrder.id);
+        if (orderIndex < 0) return;
+        _orders[orderIndex] = updatedOrder;
+        _mergeUnique(_materials, [updatedOrder.material]);
+        _mergeUnique(_colors, [updatedOrder.color]);
+        _mergeUnique(_consumables, updatedOrder.consumables);
+      });
+      await _saveData();
+      _notifyOrdersChanged();
+    } finally {
+      draft.dispose();
+    }
   }
 
   Future<void> _addCustomColorToPalette(_OrderDraft draft) async {
@@ -410,8 +1008,6 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     });
     if (isNewDraft) await _saveData();
   }
-
-  Future<void> _openLink(_MaterialOrder order) => _openPageLink(order.link);
 
   Future<void> _openPageLink(String value) async {
     final link = _normalizedPageLink(value);
@@ -515,7 +1111,7 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                   else ...[
                     _buildForm(context, pageWidth),
                     const SizedBox(height: 20),
-                    _buildOrdersTable(context),
+                    if (!widget.embedded) _buildOrdersTable(context),
                   ],
                 ],
                 if (_storageError != null) ...[
@@ -585,9 +1181,10 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                     height: 28,
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primary.withValues(
-                            alpha: Theme.of(context).brightness == Brightness.dark
-                                ? 0.20
-                                : 0.10,
+                            alpha:
+                                Theme.of(context).brightness == Brightness.dark
+                                    ? 0.20
+                                    : 0.10,
                           ),
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -622,9 +1219,10 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                   ),
                 ),
                 style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : const Color(0xFFF0F2F5),
+                  backgroundColor:
+                      Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : const Color(0xFFF0F2F5),
                   foregroundColor: Theme.of(context).colorScheme.onSurface,
                   elevation: 0,
                   padding:
@@ -640,7 +1238,7 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
           const SizedBox(height: 14),
           _buildForm(context, maxWidth),
           const SizedBox(height: 14),
-          _buildOrdersTable(context),
+          if (!widget.embedded) _buildOrdersTable(context),
         ],
         if (_storageError != null) ...[
           const SizedBox(height: 10),
@@ -802,8 +1400,14 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
             ? 2
             : 1;
     final fieldWidth = (availableWidth - (12 * (columns - 1))) / columns;
-    final detailFieldWidth =
-        (availableWidth - 28 - (12 * (columns - 1))) / columns;
+    final urgencyDetailColumns = availableWidth >= 620 ? 2 : 1;
+    final detailFieldWidth = urgencyDetailColumns == 2
+        ? (availableWidth >= 1236 ? 610.0 : (availableWidth - 12) / 2)
+        : availableWidth;
+    final orderUrgencyDropdownWidth =
+        availableWidth >= 620 ? 400.0 : availableWidth;
+    final consumableSelectorWidth =
+        availableWidth >= 620 ? 426.0 : availableWidth;
     Widget field(Widget child, {double? width}) =>
         SizedBox(width: width ?? fieldWidth, child: child);
 
@@ -827,55 +1431,31 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
             children: [
               Row(
                 children: [
+                  Expanded(
+                    child: _formSectionTitle(
+                      context,
+                      'Datos Combinados del Material',
+                      icon: Icons.inventory_2_outlined,
+                    ),
+                  ),
                   Container(
                     padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withValues(
-                        alpha: isDark ? 0.22 : 0.12,
+                        alpha: isDark ? 0.16 : 0.08,
                       ),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.inventory_2_outlined,
-                            size: 14, color: theme.colorScheme.primary),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Pedido ${draftIndex + 1}',
-                          style: TextStyle(
-                            color: theme.colorScheme.primary,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      'Pedido ${draftIndex + 1}',
+                      style: TextStyle(
+                        color: theme.colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
                     ),
                   ),
-                  if (draft.selectedMaterial != null &&
-                      draft.selectedMaterial!.isNotEmpty) ...[
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white10
-                            : Colors.black.withValues(alpha: 0.04),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '${draft.selectedMaterial} · ${draft.selectedColor ?? "Sin color"}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
-                  const Spacer(),
                   if (draftIndex > 0)
                     IconButton(
                       key: ValueKey('remove_order_draft_$draftIndex'),
@@ -913,10 +1493,8 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                     ),
                     IconButton(
                       tooltip: 'Abrir página web',
-                      onPressed: () =>
-                          _openPageLink(draft.linkController.text),
-                      icon:
-                          const Icon(Icons.open_in_browser_rounded, size: 20),
+                      onPressed: () => _openPageLink(draft.linkController.text),
+                      icon: const Icon(Icons.open_in_browser_rounded, size: 20),
                     ),
                   ],
                 ),
@@ -986,103 +1564,117 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                   ],
                 ),
               ],
-            ],
-          ),
-        ),
-        if (draftIndex == _orderDrafts.length - 1) ...[
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              key: ValueKey('add_order_draft_$draftIndex'),
-              onPressed: () => setState(() => _orderDrafts.add(_OrderDraft())),
-              icon: const Icon(Icons.add_rounded, size: 16),
-              label: const Text('Agregar otro pedido'),
-              style: OutlinedButton.styleFrom(
-                backgroundColor: isDark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : const Color(0xFFF4F6F9),
-                foregroundColor: theme.colorScheme.primary,
-                side: BorderSide(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : const Color(0xFFE5E7EB),
-                ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Divider(height: 1),
+              ),
+              _formSectionTitle(context, 'Urgencia en el laboratorio',
+                  icon: Icons.bolt_rounded),
+              Text(
+                'Prioridad para la reposición o compra de este material en el laboratorio.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontSize: 12,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF1B1E26) : const Color(0xFFF9FAFC),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.07)
-                    : const Color(0xFFE9EBEF),
-                width: 1,
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _formSectionTitle(context, 'Urgencia en el laboratorio',
-                    icon: Icons.bolt_rounded),
-                Text(
-                  'Prioridad para la reposición o compra de este material en el laboratorio.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontSize: 12,
+              const SizedBox(height: 14),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  width: orderUrgencyDropdownWidth,
+                  child: _urgencyDropdown(
+                    context,
+                    key: ValueKey('urgency_order_${draft.id}'),
+                    selectedUrgency: draft.selectedUrgency,
+                    onChanged: (value) =>
+                        setState(() => draft.selectedUrgency = value),
                   ),
                 ),
+              ),
+              if (draft.selectedUrgency != null) ...[
                 const SizedBox(height: 14),
                 Wrap(
                   spacing: 12,
                   runSpacing: 12,
                   children: [
                     SizedBox(
-                      width: availableWidth >= 620 ? 320 : availableWidth,
-                      child: _urgencyDropdown(context, sharedDraft),
+                      width: detailFieldWidth,
+                      child: _textInput(
+                        context,
+                        key: ValueKey('order_urgency_type_${draft.id}'),
+                        controller: draft.urgencyTypeController,
+                        label: 'Urgencia en el laboratorio',
+                        hint: 'Ej. Reposición urgente',
+                      ),
+                    ),
+                    SizedBox(
+                      width: detailFieldWidth,
+                      child: _textInput(
+                        context,
+                        key: ValueKey('order_urgency_details_${draft.id}'),
+                        controller: draft.urgencyDetailsController,
+                        label: 'Urgencia en texto',
+                        hint: 'Ej. Falta para la entrega de mañana',
+                      ),
                     ),
                   ],
                 ),
-                if (sharedDraft.selectedUrgency != null) ...[
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      field(
-                        _textInput(
-                          context,
-                          controller: sharedDraft.urgencyTypeController,
-                          label: 'Tipo de urgencia',
-                          hint: 'Ej. Reposición urgente',
-                        ),
-                        width: detailFieldWidth,
-                      ),
-                      field(
-                        _textInput(
-                          context,
-                          controller: sharedDraft.urgencyDetailsController,
-                          label: 'Urgencia en texto',
-                          hint: 'Ej. Falta para la entrega de mañana',
-                        ),
-                        width: detailFieldWidth,
-                      ),
-                    ],
-                  ),
-                ],
               ],
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SizedBox(
+                  key: ValueKey('order_cost_container_${draft.id}'),
+                  width: 220,
+                  child: _textInput(
+                    context,
+                    key: ValueKey('order_cost_${draft.id}'),
+                    controller: draft.costController,
+                    label: 'Costo (\$)',
+                    hint: '0',
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (draftIndex == _orderDrafts.length - 1) ...[
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Tooltip(
+              message: 'Agregar otro pedido',
+              child: OutlinedButton.icon(
+                key: ValueKey('add_order_draft_$draftIndex'),
+                onPressed: () =>
+                    setState(() => _orderDrafts.add(_OrderDraft())),
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Agregar otro pedido'),
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: isDark
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : const Color(0xFFF4F6F9),
+                  foregroundColor: theme.colorScheme.primary,
+                  side: BorderSide(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : const Color(0xFFE5E7EB),
+                  ),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Container(
+            key: ValueKey('consumables_panel_${sharedDraft.id}'),
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1B1E26) : const Color(0xFFF9FAFC),
@@ -1111,72 +1703,172 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                   final index = entry.key;
                   final form = entry.value;
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Wrap(
+                    padding: EdgeInsets.only(
+                      bottom: index == sharedDraft.consumableForms.length - 1
+                          ? 14
+                          : 18,
+                    ),
+                    child: Column(
                       key: ValueKey('consumable_row_${sharedDraft.id}_$index'),
-                      spacing: 12,
-                      runSpacing: 12,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        field(_dropdown(
+                        _textInput(
                           context,
                           key: ValueKey(
-                            'consumable_dropdown_${sharedDraft.id}_$index',
+                            'consumable_link_${sharedDraft.id}_$index',
                           ),
-                          label: 'Consumible ${index + 1}',
-                          value: form.selected,
-                          options: [..._consumables, _otro],
-                          hint: 'Elegir consumible',
-                          onChanged: (value) =>
-                              setState(() => form.selected = value),
-                        )),
-                        if (form.selected == _otro)
-                          field(_textInput(
-                            context,
-                            controller: form.manualController,
-                            label: 'Escribe el consumible',
-                            hint: 'Ej. Boquilla de 0.4 mm',
-                          )),
-                        if (index > 0)
-                          IconButton(
-                            key: ValueKey(
-                              'remove_consumable_${sharedDraft.id}_$index',
+                          controller: form.linkController,
+                          label: 'Link de donde se encontró el consumible',
+                          hint: 'https://...',
+                          keyboardType: TextInputType.url,
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Pegar enlace del consumible',
+                                onPressed: () async {
+                                  final data = await Clipboard.getData(
+                                    Clipboard.kTextPlain,
+                                  );
+                                  if (data?.text != null &&
+                                      data!.text!.trim().isNotEmpty) {
+                                    form.linkController.text =
+                                        data.text!.trim();
+                                    setState(() {});
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.content_paste_rounded,
+                                  size: 20,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Abrir enlace del consumible',
+                                onPressed: () =>
+                                    _openPageLink(form.linkController.text),
+                                icon: const Icon(
+                                  Icons.open_in_browser_rounded,
+                                  size: 20,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          crossAxisAlignment: WrapCrossAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: consumableSelectorWidth,
+                              child: _dropdown(
+                                context,
+                                key: ValueKey(
+                                  'consumable_dropdown_${sharedDraft.id}_$index',
+                                ),
+                                label: 'Consumible ${index + 1}',
+                                value: form.selected,
+                                options: [..._consumables, _otro],
+                                hint: 'Elegir consumible',
+                                onChanged: (value) =>
+                                    setState(() => form.selected = value),
+                              ),
                             ),
-                            tooltip: 'Quitar consumible',
-                            onPressed: () => setState(() {
-                              sharedDraft.consumableForms
-                                  .removeAt(index)
-                                  .dispose();
-                            }),
-                            icon: const Icon(
-                                Icons.remove_circle_outline_rounded),
-                            color: theme.colorScheme.error,
+                            if (index > 0)
+                              IconButton(
+                                key: ValueKey(
+                                  'remove_consumable_${sharedDraft.id}_$index',
+                                ),
+                                tooltip: 'Quitar consumible',
+                                onPressed: () => setState(() {
+                                  sharedDraft.consumableForms
+                                      .removeAt(index)
+                                      .dispose();
+                                }),
+                                icon: const Icon(
+                                  Icons.remove_circle_outline_rounded,
+                                ),
+                                color: theme.colorScheme.error,
+                              ),
+                          ],
+                        ),
+                        if (form.selected == _otro) ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: consumableSelectorWidth,
+                            child: _textInput(
+                              context,
+                              key: ValueKey(
+                                'consumable_manual_${sharedDraft.id}_$index',
+                              ),
+                              controller: form.manualController,
+                              label: 'Escribe el consumible',
+                              hint: 'Ej. Boquilla de 0.4 mm',
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        _buildConsumableUrgencyForm(
+                          context,
+                          form,
+                          index,
+                          availableWidth: availableWidth,
+                          detailFieldWidth: detailFieldWidth,
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          key: ValueKey(
+                            'consumable_cost_container_${sharedDraft.id}_$index',
+                          ),
+                          width: 295,
+                          child: _textInput(
+                            context,
+                            key: ValueKey(
+                              'consumable_cost_${sharedDraft.id}_$index',
+                            ),
+                            controller: form.costController,
+                            label: 'Costo (\$)',
+                            hint: '0',
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                          ),
+                        ),
+                        if (index < sharedDraft.consumableForms.length - 1)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 16),
+                            child: Divider(height: 1),
                           ),
                       ],
                     ),
                   );
                 }),
-                FilledButton.tonalIcon(
-                  key: ValueKey('add_consumable_${sharedDraft.id}'),
-                  onPressed: () => setState(
-                    () => sharedDraft.consumableForms.add(_ConsumableForm()),
-                  ),
-                  icon: const Icon(Icons.add_rounded, size: 15),
-                  label: const Text('Agregar otro consumible'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.white.withValues(alpha: 0.06)
-                        : const Color(0xFFF0F2F5),
-                    foregroundColor: theme.colorScheme.primary,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(9),
-                    ),
-                  ),
-                ),
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              key: ValueKey('add_consumable_${sharedDraft.id}'),
+              onPressed: () => setState(
+                () => sharedDraft.consumableForms.add(_ConsumableForm()),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 15),
+              label: const Text('Agregar otro consumible'),
+              style: FilledButton.styleFrom(
+                backgroundColor: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : const Color(0xFFF0F2F5),
+                foregroundColor: theme.colorScheme.primary,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(9),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -1195,32 +1887,11 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _formSectionTitle(context, 'Costo del material',
-                    icon: Icons.payments_outlined),
-                Text(
-                  'Monto aproximado de compra y confirmación para enviar a la tabla.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 14),
                 Wrap(
                   spacing: 14,
                   runSpacing: 12,
                   crossAxisAlignment: WrapCrossAlignment.end,
                   children: [
-                    SizedBox(
-                      width: 220,
-                      child: _textInput(
-                        context,
-                        controller: sharedDraft.costController,
-                        label: 'Costo (\$)',
-                        hint: '0',
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                      ),
-                    ),
                     SizedBox(
                       height: 44,
                       child: FilledButton.icon(
@@ -1264,9 +1935,8 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.08)
-        : const Color(0xFFE5E7EB);
+    final borderColor =
+        isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFE5E7EB);
 
     return InputDecoration(
       hintText: hintText,
@@ -1634,107 +2304,258 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     );
   }
 
-  Widget _urgencyDropdown(BuildContext context, _OrderDraft draft) {
+  Widget _buildConsumableUrgencyForm(
+    BuildContext context,
+    _ConsumableForm form,
+    int index, {
+    required double availableWidth,
+    required double detailFieldWidth,
+  }) {
     final theme = Theme.of(context);
-    final selectedColor = draft.selectedUrgency == null
-        ? null
-        : _urgencyColor(context, draft.selectedUrgency!);
-    final selectedForeground = draft.selectedUrgency == null
-        ? theme.colorScheme.onSurface
-        : Colors.white;
+    final urgencyDropdownWidth = availableWidth >= 620 ? 400.0 : availableWidth;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _formSectionTitle(context, 'Urgencia en el laboratorio',
+            icon: Icons.bolt_rounded),
         Text(
-          'Urgencia en el laboratorio',
-          style: theme.textTheme.labelMedium?.copyWith(
+          'Prioridad para la reposición o compra de este material en el laboratorio.',
+          style: theme.textTheme.bodySmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
+            fontSize: 12,
           ),
         ),
-        const SizedBox(height: 6),
-        DropdownButtonFormField<String>(
-          key: ValueKey('urgency_${draft.id}_${draft.selectedUrgency}'),
-          initialValue: draft.selectedUrgency,
-          isExpanded: true,
-          hint: const Text('Elegir urgencia'),
-          items: ['Rojo', 'Amarillo', 'Verde']
-              .map(
-                (level) => DropdownMenuItem<String>(
-                  value: level,
-                  child: Row(
+        const SizedBox(height: 14),
+        SizedBox(
+          width: urgencyDropdownWidth,
+          child: _urgencyDropdown(
+            context,
+            key: ValueKey('urgency_consumable_${form.id}'),
+            selectedUrgency: form.selectedUrgency,
+            onChanged: (value) => setState(() => form.selectedUrgency = value),
+          ),
+        ),
+        if (form.selectedUrgency != null) ...[
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: detailFieldWidth,
+                child: _textInput(
+                  context,
+                  key: ValueKey('consumable_urgency_type_$index'),
+                  controller: form.urgencyTypeController,
+                  label: 'Tipo de urgencia',
+                  hint: 'Ej. Reposición urgente',
+                ),
+              ),
+              SizedBox(
+                width: detailFieldWidth,
+                child: _textInput(
+                  context,
+                  key: ValueKey('consumable_urgency_details_$index'),
+                  controller: form.urgencyDetailsController,
+                  label: 'Urgencia en texto',
+                  hint: 'Ej. Falta para la entrega de mañana',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _urgencyDropdown(
+    BuildContext context, {
+    required Key key,
+    String label = 'Urgencia en el laboratorio',
+    bool compact = false,
+    required String? selectedUrgency,
+    required ValueChanged<String?> onChanged,
+  }) {
+    final theme = Theme.of(context);
+    final selectedColor = selectedUrgency == null
+        ? null
+        : _urgencyColor(context, selectedUrgency);
+    final selectedForeground =
+        selectedUrgency == null ? theme.colorScheme.onSurface : Colors.white;
+    final selector = compact
+        ? DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              key: key,
+              value: selectedUrgency,
+              isDense: true,
+              isExpanded: true,
+              icon: const SizedBox.shrink(),
+              selectedItemBuilder: (context) => ['Rojo', 'Amarillo', 'Verde']
+                  .map(
+                    (level) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _urgencyColor(context, level),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.circle,
+                              size: 9,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              level,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              items: ['Rojo', 'Amarillo', 'Verde']
+                  .map(
+                    (level) => DropdownMenuItem<String>(
+                      value: level,
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.circle,
+                            size: 13,
+                            color: _urgencyColor(context, level),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(level),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: onChanged,
+            ),
+          )
+        : DropdownButtonFormField<String>(
+            key: key,
+            initialValue: selectedUrgency,
+            isExpanded: true,
+            hint: const Text('Elegir urgencia'),
+            items: ['Rojo', 'Amarillo', 'Verde']
+                .map(
+                  (level) => DropdownMenuItem<String>(
+                    value: level,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.circle,
+                          size: 13,
+                          color: _urgencyColor(context, level),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          level,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          level == 'Rojo'
+                              ? '· Alta / Crítica'
+                              : level == 'Amarillo'
+                                  ? '· Media'
+                                  : '· Baja',
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+            selectedItemBuilder: (context) => ['Rojo', 'Amarillo', 'Verde']
+                .map(
+                  (level) => Row(
                     children: [
-                      Icon(
+                      const Icon(
                         Icons.circle,
-                        size: 13,
-                        color: _urgencyColor(context, level),
+                        size: 11,
+                        color: Colors.white,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         level,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        level == 'Rojo'
-                            ? '· Alta / Crítica'
-                            : level == 'Amarillo'
-                                ? '· Media'
-                                : '· Baja',
-                        style: TextStyle(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                          fontWeight: FontWeight.normal,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
                   ),
-                ),
-              )
-              .toList(),
-          selectedItemBuilder: (context) => ['Rojo', 'Amarillo', 'Verde']
-              .map(
-                (level) => Row(
-                  children: [
-                    const Icon(
-                      Icons.circle,
-                      size: 11,
-                      color: Colors.white,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      level,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-              .toList(),
-          onChanged: (value) => setState(() => draft.selectedUrgency = value),
-          decoration: _macInputDecoration(
-            context,
-            customFill: selectedColor,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          ),
-          dropdownColor: theme.colorScheme.surface,
-          iconEnabledColor: selectedForeground,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: selectedForeground,
-            fontWeight: FontWeight.w500,
+                )
+                .toList(),
+            onChanged: onChanged,
+            decoration: _macInputDecoration(
+              context,
+              customFill: selectedColor,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            ),
+            dropdownColor: theme.colorScheme.surface,
+            iconEnabledColor: selectedForeground,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: selectedForeground,
+              fontWeight: FontWeight.w500,
+            ),
+          );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
+        const SizedBox(height: 6),
+        selector,
       ],
     );
   }
 
-  Widget _buildOrdersTable(BuildContext context) {
+  Widget _buildOrdersTable(BuildContext context,
+      {String title = 'Tabla de pedidos'}) {
     final theme = Theme.of(context);
+    final displayedOrderCount = _orders.fold<int>(
+      0,
+      (count, order) => count + 1 + order.consumableRequests.length,
+    );
+    final rows = <DataRow>[];
+    for (final order in _orders) {
+      rows.add(_materialOrderRow(context, order));
+      for (var index = 0; index < order.consumableRequests.length; index++) {
+        rows.add(
+          _consumableOrderRow(
+              context, order, order.consumableRequests[index], index),
+        );
+      }
+    }
     return Container(
+      key: const ValueKey('material_orders_list'),
       decoration: _cardDecoration(theme),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1760,17 +2581,17 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                 ),
                 const SizedBox(width: 9),
                 Text(
-                  'Tabla de pedidos',
+                  title,
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.2,
                   ),
                 ),
-                if (_orders.isNotEmpty) ...[
+                if (displayedOrderCount > 0) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.primary.withValues(
                         alpha: theme.brightness == Brightness.dark ? 0.2 : 0.1,
@@ -1778,7 +2599,7 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      '${_orders.length}',
+                      '$displayedOrderCount',
                       style: TextStyle(
                         color: theme.colorScheme.primary,
                         fontSize: 12,
@@ -1829,110 +2650,45 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
           else
             LayoutBuilder(
               builder: (context, constraints) {
-                return SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minWidth: constraints.maxWidth,
-                    ),
-                    child: DataTable(
-                      columnSpacing: 22,
-                      headingRowColor: WidgetStatePropertyAll(
-                        theme.brightness == Brightness.dark
-                            ? const Color(0xFF222630)
-                            : const Color(0xFFF7F8FA),
+                return Scrollbar(
+                  controller: _ordersTableScrollController,
+                  thumbVisibility: true,
+                  trackVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: _ordersTableScrollController,
+                    scrollDirection: Axis.horizontal,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minWidth: constraints.maxWidth,
                       ),
-                      dividerThickness: 0.5,
-                      border: TableBorder(
-                        horizontalInside: BorderSide(
-                          color: theme.brightness == Brightness.dark
-                              ? Colors.white.withValues(alpha: 0.04)
-                              : const Color(0xFFF0F2F5),
-                          width: 0.8,
+                      child: DataTable(
+                        columnSpacing: 22,
+                        headingRowColor: WidgetStatePropertyAll(
+                          theme.brightness == Brightness.dark
+                              ? const Color(0xFF222630)
+                              : const Color(0xFFF7F8FA),
                         ),
+                        dividerThickness: 0.5,
+                        border: TableBorder(
+                          horizontalInside: BorderSide(
+                            color: theme.brightness == Brightness.dark
+                                ? Colors.white.withValues(alpha: 0.04)
+                                : const Color(0xFFF0F2F5),
+                            width: 0.8,
+                          ),
+                        ),
+                        columns: const [
+                          DataColumn(label: Text('Página')),
+                          DataColumn(label: Text('Material')),
+                          DataColumn(label: Text('Color')),
+                          DataColumn(label: Text('Urgencia')),
+                          DataColumn(label: Text('Consumible')),
+                          DataColumn(label: Text('Peso restante')),
+                          DataColumn(label: Text('Costo')),
+                          DataColumn(label: Text('')),
+                        ],
+                        rows: rows,
                       ),
-                      columns: const [
-                        DataColumn(label: Text('Página')),
-                        DataColumn(label: Text('Material')),
-                        DataColumn(label: Text('Color')),
-                        DataColumn(label: Text('Urgencia')),
-                        DataColumn(label: Text('Consumible')),
-                        DataColumn(label: Text('Peso restante')),
-                        DataColumn(label: Text('Costo')),
-                        DataColumn(label: Text('')),
-                      ],
-                      rows: _orders.map((order) {
-                        return DataRow(
-                          cells: [
-                            DataCell(
-                              Tooltip(
-                                message: order.link,
-                                child: TextButton.icon(
-                                  onPressed: () => _openLink(order),
-                                  icon: const Icon(
-                                    Icons.open_in_new_rounded,
-                                    size: 15,
-                                  ),
-                                  label: Text(
-                                    _siteName(order.link),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            DataCell(
-                              Chip(
-                                label: Text(order.material),
-                                visualDensity: VisualDensity.compact,
-                              ),
-                            ),
-                            DataCell(
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 15,
-                                    height: 15,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: _filamentColor(order.color),
-                                      border: Border.all(
-                                        color: theme.brightness ==
-                                                Brightness.dark
-                                            ? Colors.white
-                                                .withValues(alpha: 0.12)
-                                            : const Color(0xFFD1D5DB),
-                                        width: 0.8,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(order.color),
-                                ],
-                              ),
-                            ),
-                            DataCell(_urgencyChip(context, order)),
-                            DataCell(Text(
-                              order.consumables.isEmpty
-                                  ? '—'
-                                  : order.consumables.join(', '),
-                            )),
-                            DataCell(_remainingCell(context, order)),
-                            DataCell(
-                                Text('\$${order.cost.toStringAsFixed(2)}')),
-                            DataCell(
-                              IconButton(
-                                tooltip: 'Quitar pedido',
-                                onPressed:
-                                    _saving ? null : () => _removeOrder(order),
-                                icon: const Icon(Icons.delete_outline_rounded),
-                                color: theme.colorScheme.error,
-                              ),
-                            ),
-                          ],
-                        );
-                      }).toList(),
                     ),
                   ),
                 );
@@ -1943,20 +2699,176 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     );
   }
 
+  DataRow _materialOrderRow(BuildContext context, _MaterialOrder order) {
+    final theme = Theme.of(context);
+    return DataRow(
+      key: ValueKey('order_material_row_${order.id}'),
+      cells: [
+        DataCell(_orderPageCell(order.link)),
+        DataCell(
+          Chip(
+            label: Text(order.material),
+            visualDensity: VisualDensity.compact,
+          ),
+        ),
+        DataCell(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 15,
+                height: 15,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _filamentColor(order.color),
+                  border: Border.all(
+                    color: theme.brightness == Brightness.dark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : const Color(0xFFD1D5DB),
+                    width: 0.8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(order.color),
+            ],
+          ),
+        ),
+        DataCell(_urgencyChip(context, order)),
+        const DataCell(Text('—')),
+        DataCell(_remainingCell(context, order)),
+        DataCell(Text('\$${order.cost.toStringAsFixed(2)}')),
+        DataCell(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                key: ValueKey('edit_order_${order.id}'),
+                tooltip: 'Editar pedido',
+                onPressed: _saving ? null : () => _editOrder(order),
+                icon: const Icon(Icons.edit_outlined, size: 19),
+                color: theme.colorScheme.primary,
+              ),
+              IconButton(
+                tooltip: 'Quitar pedido',
+                onPressed: _saving ? null : () => _removeOrder(order),
+                icon: const Icon(Icons.delete_outline_rounded),
+                color: theme.colorScheme.error,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  DataRow _consumableOrderRow(
+    BuildContext context,
+    _MaterialOrder order,
+    _ConsumableRequest request,
+    int index,
+  ) {
+    final theme = Theme.of(context);
+    return DataRow(
+      key: ValueKey('order_consumable_row_${order.id}_$index'),
+      cells: [
+        DataCell(_orderPageCell(request.link ?? order.link)),
+        const DataCell(Text('—')),
+        const DataCell(Text('—')),
+        DataCell(_consumableUrgencyChip(context, request)),
+        DataCell(
+          Container(
+            key: ValueKey('order_consumable_item_${order.id}_$index'),
+            constraints: const BoxConstraints(maxWidth: 190),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            decoration: BoxDecoration(
+              color: theme.brightness == Brightness.dark
+                  ? theme.colorScheme.surface.withValues(alpha: 0.7)
+                  : const Color(0xFFEEF8F6),
+              borderRadius: BorderRadius.circular(7),
+              border: Border.all(
+                color: theme.brightness == Brightness.dark
+                    ? Colors.white.withValues(alpha: 0.08)
+                    : const Color(0xFFDCE9E7),
+              ),
+            ),
+            child: Text(
+              request.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+        ),
+        const DataCell(Text('—')),
+        DataCell(Text('\$${request.cost.toStringAsFixed(2)}')),
+        const DataCell(SizedBox.shrink()),
+      ],
+    );
+  }
+
+  Widget _orderPageCell(String link) {
+    return SizedBox(
+      width: 220,
+      child: Tooltip(
+        message: link,
+        child: TextButton.icon(
+          onPressed: () => _openPageLink(link),
+          icon: const Icon(Icons.open_in_new_rounded, size: 15),
+          label: Text(
+            _siteName(link),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _consumableUrgencyChip(
+    BuildContext context,
+    _ConsumableRequest request,
+  ) {
+    final color = _urgencyColor(context, request.urgency);
+    return Tooltip(
+      message:
+          '${request.urgency} · ${request.urgencyType}: ${request.urgencyDetails}',
+      child: SizedBox(
+        width: 300,
+        child: Chip(
+          avatar: Icon(Icons.circle, size: 12, color: color),
+          label: Text(
+            '${request.urgencyType}: ${request.urgencyDetails}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          side: BorderSide(color: color.withValues(alpha: 0.4)),
+          backgroundColor: color.withValues(alpha: 0.12),
+          visualDensity: VisualDensity.compact,
+        ),
+      ),
+    );
+  }
+
   Widget _urgencyChip(BuildContext context, _MaterialOrder order) {
     final color = _urgencyColor(context, order.urgency);
     return Tooltip(
-      message: order.urgencyDetails,
-      child: Chip(
-        avatar: Icon(Icons.circle, size: 12, color: color),
-        label: Text(
-          '${order.urgencyType}: ${order.urgencyDetails}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+      message:
+          '${order.urgency} · ${order.urgencyType}: ${order.urgencyDetails}',
+      child: SizedBox(
+        key: ValueKey('order_urgency_cell_${order.id}'),
+        width: 300,
+        child: Chip(
+          avatar: Icon(Icons.circle, size: 12, color: color),
+          label: Text(
+            '${order.urgencyType}: ${order.urgencyDetails}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          side: BorderSide(color: color.withValues(alpha: 0.4)),
+          backgroundColor: color.withValues(alpha: 0.12),
+          visualDensity: VisualDensity.compact,
         ),
-        side: BorderSide(color: color.withValues(alpha: 0.4)),
-        backgroundColor: color.withValues(alpha: 0.12),
-        visualDensity: VisualDensity.compact,
       ),
     );
   }
@@ -2180,6 +3092,7 @@ class _MaterialOrder {
     required this.urgencyType,
     required this.urgencyDetails,
     required this.consumables,
+    required this.consumableRequests,
     required this.spoolGrams,
     required this.usedGrams,
     required this.cost,
@@ -2193,6 +3106,7 @@ class _MaterialOrder {
   final String urgencyType;
   final String urgencyDetails;
   final List<String> consumables;
+  final List<_ConsumableRequest> consumableRequests;
   final double? spoolGrams;
   final double? usedGrams;
   final double cost;
@@ -2211,6 +3125,8 @@ class _MaterialOrder {
         'urgencyType': urgencyType,
         'urgencyDetails': urgencyDetails,
         'consumables': consumables,
+        'consumableRequests':
+            consumableRequests.map((request) => request.toJson()).toList(),
         'spoolGrams': spoolGrams,
         'usedGrams': usedGrams,
         'cost': cost,
@@ -2225,6 +3141,7 @@ class _MaterialOrder {
     final urgencyType = json['urgencyType'] ?? urgency;
     final urgencyDetails = json['urgencyDetails'];
     final savedConsumables = json['consumables'];
+    final savedConsumableRequests = json['consumableRequests'];
     final legacyConsumable = json['consumable'];
     final cost = json['cost'];
     if (id is! String ||
@@ -2237,10 +3154,37 @@ class _MaterialOrder {
         (savedConsumables != null &&
             (savedConsumables is! List ||
                 savedConsumables.any((item) => item is! String))) ||
+        (savedConsumableRequests != null && savedConsumableRequests is! List) ||
         (legacyConsumable != null && legacyConsumable is! String) ||
         (cost is! num)) {
       throw const FormatException('Los datos de un pedido no son válidos.');
     }
+    final consumables = savedConsumables is List
+        ? savedConsumables.cast<String>()
+        : legacyConsumable is String
+            ? [legacyConsumable]
+            : const <String>[];
+    final consumableRequests = savedConsumableRequests is List
+        ? savedConsumableRequests.map((item) {
+            if (item is! Map<String, dynamic>) {
+              throw const FormatException(
+                'Los datos de un consumible no son válidos.',
+              );
+            }
+            return _ConsumableRequest.fromJson(item);
+          }).toList()
+        : consumables
+            .map(
+              (name) => _ConsumableRequest(
+                name: name,
+                link: null,
+                urgency: urgency,
+                urgencyType: urgencyType,
+                urgencyDetails: urgencyDetails,
+                cost: 0,
+              ),
+            )
+            .toList();
     return _MaterialOrder(
       id: id,
       link: link,
@@ -2249,13 +3193,65 @@ class _MaterialOrder {
       urgency: urgency,
       urgencyType: urgencyType,
       urgencyDetails: urgencyDetails,
-      consumables: savedConsumables is List
-          ? savedConsumables.cast<String>()
-          : legacyConsumable is String
-              ? [legacyConsumable]
-              : const [],
+      consumables: consumables,
+      consumableRequests: consumableRequests,
       spoolGrams: _readNullableNumber(json['spoolGrams']),
       usedGrams: _readNullableNumber(json['usedGrams']),
+      cost: cost.toDouble(),
+    );
+  }
+}
+
+class _ConsumableRequest {
+  const _ConsumableRequest({
+    required this.name,
+    required this.link,
+    required this.urgency,
+    required this.urgencyType,
+    required this.urgencyDetails,
+    required this.cost,
+  });
+
+  final String name;
+  final String? link;
+  final String urgency;
+  final String urgencyType;
+  final String urgencyDetails;
+  final double cost;
+
+  Map<String, Object?> toJson() => {
+        'name': name,
+        'link': link,
+        'urgency': urgency,
+        'urgencyType': urgencyType,
+        'urgencyDetails': urgencyDetails,
+        'cost': cost,
+      };
+
+  factory _ConsumableRequest.fromJson(Map<String, dynamic> json) {
+    final name = json['name'];
+    final link = json['link'];
+    final urgency = json['urgency'];
+    final urgencyType = json['urgencyType'];
+    final urgencyDetails = json['urgencyDetails'];
+    final cost = json['cost'] ?? 0;
+    if (link != null && link is! String) {
+      throw const FormatException('Los datos de un consumible no son válidos.');
+    }
+    if (name is! String ||
+        urgency is! String ||
+        urgencyType is! String ||
+        urgencyDetails is! String ||
+        cost is! num ||
+        cost < 0) {
+      throw const FormatException('Los datos de un consumible no son válidos.');
+    }
+    return _ConsumableRequest(
+      name: name,
+      link: link,
+      urgency: urgency,
+      urgencyType: urgencyType,
+      urgencyDetails: urgencyDetails,
       cost: cost.toDouble(),
     );
   }
@@ -2278,7 +3274,7 @@ class _OrderDraft {
 
   String? selectedMaterial;
   String? selectedColor;
-  String? selectedUrgency;
+  String? selectedUrgency = 'Rojo';
 
   void dispose() {
     linkController.dispose();
@@ -2294,11 +3290,105 @@ class _OrderDraft {
   }
 }
 
+class _OrderEditDraft {
+  _OrderEditDraft(_MaterialOrder order)
+      : linkController = TextEditingController(text: order.link),
+        materialController = TextEditingController(text: order.material),
+        colorController = TextEditingController(text: order.color),
+        weightController = TextEditingController(
+          text: order.spoolGrams == null ? '' : '${order.spoolGrams} g',
+        ),
+        urgencyTypeController = TextEditingController(text: order.urgencyType),
+        urgencyDetailsController =
+            TextEditingController(text: order.urgencyDetails),
+        costController =
+            TextEditingController(text: order.cost.toStringAsFixed(2)),
+        consumableDrafts = order.consumableRequests
+            .map(_ConsumableEditDraft.fromRequest)
+            .toList();
+
+  final TextEditingController linkController;
+  final TextEditingController materialController;
+  final TextEditingController colorController;
+  final TextEditingController weightController;
+  final TextEditingController urgencyTypeController;
+  final TextEditingController urgencyDetailsController;
+  final TextEditingController costController;
+  final List<_ConsumableEditDraft> consumableDrafts;
+
+  void dispose() {
+    linkController.dispose();
+    materialController.dispose();
+    colorController.dispose();
+    weightController.dispose();
+    urgencyTypeController.dispose();
+    urgencyDetailsController.dispose();
+    costController.dispose();
+    for (final consumable in consumableDrafts) {
+      consumable.dispose();
+    }
+  }
+}
+
+class _ConsumableEditDraft {
+  _ConsumableEditDraft()
+      : nameController = TextEditingController(),
+        linkController = TextEditingController(),
+        costController = TextEditingController(text: '0'),
+        urgencyTypeController = TextEditingController(),
+        urgencyDetailsController = TextEditingController();
+
+  _ConsumableEditDraft.fromRequest(_ConsumableRequest request)
+      : nameController = TextEditingController(text: request.name),
+        linkController = TextEditingController(text: request.link ?? ''),
+        costController =
+            TextEditingController(text: request.cost.toStringAsFixed(2)),
+        urgencyTypeController =
+            TextEditingController(text: request.urgencyType),
+        urgencyDetailsController =
+            TextEditingController(text: request.urgencyDetails),
+        urgency = request.urgency;
+
+  final TextEditingController nameController;
+  final TextEditingController linkController;
+  final TextEditingController costController;
+  final TextEditingController urgencyTypeController;
+  final TextEditingController urgencyDetailsController;
+  String? urgency = 'Rojo';
+
+  void dispose() {
+    nameController.dispose();
+    linkController.dispose();
+    costController.dispose();
+    urgencyTypeController.dispose();
+    urgencyDetailsController.dispose();
+  }
+}
+
 class _ConsumableForm {
+  static int _nextId = 0;
+
+  _ConsumableForm()
+      : id = _nextId++,
+        selectedUrgency = 'Rojo';
+
+  final int id;
+  final linkController = TextEditingController();
+  final costController = TextEditingController(text: '0');
+  final urgencyTypeController = TextEditingController();
+  final urgencyDetailsController = TextEditingController();
+
   String? selected;
+  String? selectedUrgency;
   final TextEditingController manualController = TextEditingController();
 
-  void dispose() => manualController.dispose();
+  void dispose() {
+    linkController.dispose();
+    costController.dispose();
+    manualController.dispose();
+    urgencyTypeController.dispose();
+    urgencyDetailsController.dispose();
+  }
 }
 
 double? _readNullableNumber(Object? value) {

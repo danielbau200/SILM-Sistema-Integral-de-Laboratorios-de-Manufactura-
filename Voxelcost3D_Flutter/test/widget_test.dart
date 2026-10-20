@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,8 +35,7 @@ void main() {
     expect(find.text('OPERATIVO'), findsNothing);
     expect(
       find.byWidgetPredicate(
-        (widget) =>
-            widget is SidebarToggleIcon && widget.color == accentPetrol,
+        (widget) => widget is SidebarToggleIcon && widget.color == accentPetrol,
       ),
       findsOneWidget,
     );
@@ -335,15 +336,22 @@ void main() {
         stockInicial: 1000,
         stockActual: 0,
       ),
+      InventoryItem(
+        material: 'ABS',
+        color: 'Blanco',
+        stockInicial: 1000,
+        stockActual: 850,
+      ),
     ];
     vm.notifyListeners();
     await tester.pumpAndSettle();
 
     expect(find.text('MATERIALES POR PEDIR'), findsNothing);
-    expect(find.text('PLA'), findsOneWidget);
-    expect(find.text('PETG'), findsOneWidget);
-    expect(find.text('15%'), findsOneWidget);
-    expect(find.text('AGOTADO'), findsOneWidget);
+    expect(find.text('Lista de pedido'), findsOneWidget);
+    expect(find.text('Aún no hay pedidos'), findsOneWidget);
+    expect(find.text('PLA'), findsNothing);
+    expect(find.text('PETG'), findsNothing);
+    expect(find.text('ABS'), findsNothing);
     expect(find.text('Nuevo pedido'), findsOneWidget);
     expect(find.byType(SidebarToggleIcon), findsOneWidget);
     expect(find.text('Link de la página donde se encontró el material'),
@@ -372,12 +380,45 @@ void main() {
     );
     await tester.enterText(firstOrderLink, 'https://example.com/product');
     expect(find.text('Agregar otro pedido'), findsOneWidget);
+    expect(find.text('Datos Combinados del Material'), findsOneWidget);
     expect(find.text('Pedido 1'), findsOneWidget);
+    expect(find.byTooltip('Agregar otro pedido'), findsOneWidget);
     final orderLinks = find.byWidgetPredicate(
       (widget) =>
           widget is TextField &&
           widget.key is ValueKey &&
           (widget.key! as ValueKey).value.toString().startsWith('order_link_'),
+    );
+    final orderDraftId =
+        (tester.widget<TextField>(orderLinks.first).key! as ValueKey)
+            .value
+            .toString()
+            .replaceFirst('order_link_', '');
+    final orderUrgencyDropdown = find.byKey(
+      ValueKey('urgency_order_$orderDraftId'),
+    );
+    expect(tester.getSize(orderUrgencyDropdown).width, 400);
+    final orderUrgencyType = find.byKey(
+      ValueKey('order_urgency_type_$orderDraftId'),
+    );
+    final orderUrgencyDetails = find.byKey(
+      ValueKey('order_urgency_details_$orderDraftId'),
+    );
+    final orderCost = find.byKey(ValueKey('order_cost_$orderDraftId'));
+    expect(
+      tester.getSize(orderUrgencyType).width,
+      tester.getSize(orderUrgencyDetails).width,
+    );
+    expect(tester.getSize(orderUrgencyType).width, lessThan(500));
+    expect(
+      tester
+          .getSize(find.byKey(ValueKey('order_cost_container_$orderDraftId')))
+          .width,
+      220,
+    );
+    expect(
+      tester.getTopLeft(orderCost).dy,
+      greaterThan(tester.getBottomRight(orderUrgencyDetails).dy),
     );
     expect(orderLinks, findsOneWidget);
     expect(find.byTooltip('Abrir página web'), findsOneWidget);
@@ -386,18 +427,16 @@ void main() {
       'https://example.com/product',
     );
 
-    expect(find.text('Urgencia en el laboratorio'), findsNWidgets(2));
-    expect(find.text('Tipo de urgencia'), findsNothing);
-    expect(find.text('Urgencia en texto'), findsNothing);
+    expect(find.text('Urgencia en el laboratorio'), findsNWidgets(5));
+    expect(find.text('Tipo de urgencia'), findsOneWidget);
+    expect(find.text('Urgencia en texto'), findsNWidgets(2));
     expect(find.text('Peso usado (opcional)'), findsNothing);
     expect(find.text('Consumible y peso'), findsNothing);
-    final spoolWeightY =
-        tester.getTopLeft(find.text('Peso del carrete').first).dy;
-    final urgencySectionY =
-        tester.getTopLeft(find.text('Urgencia en el laboratorio').first).dy;
+    final urgencySectionY = tester
+        .getTopLeft(find.byKey(ValueKey('order_urgency_type_$orderDraftId')))
+        .dy;
     final consumableSectionY =
         tester.getTopLeft(find.text('Consumibles').first).dy;
-    expect(spoolWeightY, lessThan(urgencySectionY));
     expect(urgencySectionY, lessThan(consumableSectionY));
 
     final addConsumable = find.text('Agregar otro consumible').first;
@@ -407,11 +446,87 @@ void main() {
       scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(addConsumable).dy,
+      greaterThan(
+        tester
+            .getBottomRight(
+              find.byKey(ValueKey('consumables_panel_$orderDraftId')),
+            )
+            .dy,
+      ),
+    );
     await tester.tap(addConsumable);
     await tester.pumpAndSettle();
     expect(find.text('Consumible 1'), findsOneWidget);
     expect(find.text('Consumible 2'), findsOneWidget);
     expect(find.byTooltip('Quitar consumible'), findsOneWidget);
+    expect(find.text('Urgencia en el laboratorio'), findsNWidgets(7));
+    expect(find.text('Tipo de urgencia'), findsNWidgets(2));
+    expect(find.text('Urgencia en texto'), findsNWidgets(3));
+    final consumableLinkLabel =
+        find.text('Link de donde se encontró el consumible').first;
+    final firstConsumableLabel = find.text('Consumible 1');
+    expect(
+      tester.getTopLeft(consumableLinkLabel).dy,
+      lessThan(tester.getTopLeft(firstConsumableLabel).dy),
+    );
+    final firstConsumableDropdown = find.byWidgetPredicate(
+      (widget) =>
+          widget is DropdownButtonFormField<String> &&
+          widget.key is ValueKey &&
+          (widget.key! as ValueKey)
+              .value
+              .toString()
+              .startsWith('consumable_dropdown_') &&
+          (widget.key! as ValueKey).value.toString().endsWith('_0'),
+    );
+    expect(tester.getSize(firstConsumableDropdown).width, 426);
+    final firstConsumableCost =
+        find.byKey(ValueKey('consumable_cost_${orderDraftId}_0'));
+    expect(firstConsumableCost, findsOneWidget);
+    final firstConsumableUrgency = find.byWidgetPredicate(
+      (widget) =>
+          widget is DropdownButtonFormField<String> &&
+          widget.key is ValueKey &&
+          (widget.key! as ValueKey)
+              .value
+              .toString()
+              .startsWith('urgency_consumable_') &&
+          (widget.key! as ValueKey).value.toString().endsWith('_0'),
+    );
+    expect(
+      tester.getSize(firstConsumableUrgency).width,
+      tester.getSize(orderUrgencyDropdown).width,
+    );
+    final firstConsumableUrgencyType =
+        find.byKey(const ValueKey('consumable_urgency_type_0'));
+    final firstConsumableUrgencyDetails =
+        find.byKey(const ValueKey('consumable_urgency_details_0'));
+    expect(
+      tester
+          .getSize(
+            find.byKey(
+              ValueKey('consumable_cost_container_${orderDraftId}_0'),
+            ),
+          )
+          .width,
+      295,
+    );
+    expect(
+      tester.getTopLeft(firstConsumableCost).dy,
+      greaterThan(
+        tester.getBottomRight(firstConsumableUrgencyDetails).dy,
+      ),
+    );
+    expect(
+      tester.getSize(firstConsumableUrgencyType).width,
+      tester.getSize(firstConsumableUrgencyDetails).width,
+    );
+    expect(
+      tester.getSize(firstConsumableUrgencyType).width,
+      tester.getSize(orderUrgencyType).width,
+    );
 
     final secondConsumable = find.byWidgetPredicate((widget) {
       if (widget is! DropdownButtonFormField<String> ||
@@ -427,6 +542,44 @@ void main() {
     await tester.tap(find.text('Otro (escribir)').last);
     await tester.pumpAndSettle();
     expect(find.text('Escribe el consumible'), findsOneWidget);
+    final secondConsumableCost =
+        find.byKey(const ValueKey('consumable_cost_0_1'));
+    expect(secondConsumableCost, findsOneWidget);
+    expect(
+      tester
+          .getSize(
+            find.byKey(
+              const ValueKey('consumable_cost_container_0_1'),
+            ),
+          )
+          .width,
+      295,
+    );
+    expect(
+      tester.getTopLeft(secondConsumableCost).dy,
+      greaterThan(
+        tester
+            .getBottomRight(
+              find.byKey(const ValueKey('consumable_urgency_details_1')),
+            )
+            .dy,
+      ),
+    );
+    expect(
+      find.text('Link de donde se encontró el consumible'),
+      findsNWidgets(2),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('consumable_link_0_1')),
+      'consumables.example.com/nozzle',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('consumable_cost_0_1')),
+      '24.50',
+    );
+    tester.testTextInput.hide();
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pumpAndSettle();
 
     final colorDropdown = find.byType(DropdownButtonFormField<String>).at(1);
     await tester.ensureVisible(colorDropdown);
@@ -529,7 +682,17 @@ void main() {
       findsOneWidget,
     );
 
-    final urgencyDropdown = find.byType(DropdownButtonFormField<String>).at(2);
+    final urgencyDropdown = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is DropdownButtonFormField<String> &&
+              widget.key is ValueKey &&
+              (widget.key! as ValueKey)
+                  .value
+                  .toString()
+                  .startsWith('urgency_order_'),
+        )
+        .first;
     await tester.ensureVisible(urgencyDropdown);
     await tester.pumpAndSettle();
     await tester.tap(urgencyDropdown);
@@ -540,8 +703,8 @@ void main() {
     );
     await tester.tap(find.text('Rojo').last);
     await tester.pump();
-    expect(find.text('Tipo de urgencia'), findsOneWidget);
-    expect(find.text('Urgencia en texto'), findsOneWidget);
+    expect(find.text('Tipo de urgencia'), findsNWidgets(2));
+    expect(find.text('Urgencia en texto'), findsNWidgets(3));
     expect(
       tester
           .widget<DropdownButtonFormField<String>>(urgencyDropdown)
@@ -585,6 +748,25 @@ void main() {
           .fillColor,
       const Color(0xFF15803D),
     );
+    final secondConsumableUrgency = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is DropdownButtonFormField<String> &&
+              widget.key is ValueKey &&
+              (widget.key! as ValueKey)
+                  .value
+                  .toString()
+                  .startsWith('urgency_consumable_'),
+        )
+        .last;
+    await tester.ensureVisible(secondConsumableUrgency);
+    await tester.pumpAndSettle();
+    await tester.tap(secondConsumableUrgency);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Amarillo').last);
+    await tester.pump();
+    expect(find.text('Tipo de urgencia'), findsNWidgets(2));
+    expect(find.text('Urgencia en texto'), findsNWidgets(3));
 
     final addAnotherOrder = find.byKey(const ValueKey('add_order_draft_0'));
     await tester.ensureVisible(addAnotherOrder);
@@ -594,9 +776,53 @@ void main() {
     expect(find.text('Pedido 2'), findsOneWidget);
     expect(orderLinks, findsNWidgets(2));
     expect(find.byKey(const ValueKey('order_draft_template')), findsOneWidget);
-    expect(find.text('Urgencia en el laboratorio'), findsNWidgets(2));
+    expect(find.text('Urgencia en el laboratorio'), findsNWidgets(10));
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is DropdownButtonFormField<String> &&
+            widget.key is ValueKey &&
+            (widget.key! as ValueKey).value.toString().startsWith('urgency_'),
+      ),
+      findsNWidgets(4),
+    );
+    expect(find.text('Tipo de urgencia'), findsNWidgets(2));
+    expect(find.text('Urgencia en texto'), findsNWidgets(4));
+
+    final secondUrgencyDropdown = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is DropdownButtonFormField<String> &&
+              widget.key is ValueKey &&
+              (widget.key! as ValueKey)
+                  .value
+                  .toString()
+                  .startsWith('urgency_order_'),
+        )
+        .last;
+    await tester.ensureVisible(secondUrgencyDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(secondUrgencyDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Amarillo').last);
+    await tester.pump();
+    expect(find.text('Tipo de urgencia'), findsNWidgets(2));
+    expect(find.text('Urgencia en texto'), findsNWidgets(4));
+    expect(
+      tester
+          .widget<DropdownButtonFormField<String>>(urgencyDropdown)
+          .initialValue,
+      'Verde',
+    );
+    expect(
+      tester
+          .widget<DropdownButtonFormField<String>>(secondConsumableUrgency)
+          .initialValue,
+      'Amarillo',
+    );
     expect(find.text('Consumibles'), findsOneWidget);
-    expect(find.text('Costo del material'), findsOneWidget);
+    expect(find.text('Costo del material'), findsNothing);
+    expect(find.byKey(ValueKey('order_cost_$orderDraftId')), findsOneWidget);
     expect(find.text('Agregar a la tabla'), findsOneWidget);
     expect(
       tester.widget<TextField>(orderLinks.first).controller!.text,
@@ -625,6 +851,273 @@ void main() {
     expect(find.text('Pedido 2'), findsNothing);
     expect(orderLinks, findsOneWidget);
     expect(find.byKey(const ValueKey('remove_order_draft_1')), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('consumable_urgency_type_0')),
+      'Reposición del consumible principal',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('consumable_urgency_details_0')),
+      'Se requiere para continuar',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('consumable_urgency_type_1')),
+      'Reposición de la boquilla',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('consumable_urgency_details_1')),
+      'La boquilla actual está desgastada',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('consumable_manual_0_1')),
+      'Boquilla de 0.4 mm',
+    );
+    await tester.enterText(
+      find.byKey(ValueKey('order_urgency_type_$orderDraftId')),
+      'Reposición urgente',
+    );
+    await tester.enterText(
+      find.byKey(ValueKey('order_urgency_details_$orderDraftId')),
+      'Filamento necesario para la impresión',
+    );
+    await tester.enterText(
+      find.byKey(ValueKey('order_cost_$orderDraftId')),
+      '525.75',
+    );
+    final materialDropdown = find.byKey(const ValueKey('order_material_0'));
+    await tester.scrollUntilVisible(
+      materialDropdown,
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(materialDropdown);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('PLA').last);
+    await tester.pumpAndSettle();
+    final submitOrder = find.byKey(const ValueKey('submit_order_0'));
+    await tester.ensureVisible(submitOrder);
+    await tester.pumpAndSettle();
+    await tester.tap(submitOrder);
+    await tester.pumpAndSettle();
+    final preferences = await SharedPreferences.getInstance();
+    final savedOrders = jsonDecode(
+      preferences.getString('pedido_materiales_widget_v1')!,
+    ) as Map<String, dynamic>;
+    final savedOrder = (savedOrders['orders'] as List).first as Map;
+    expect(find.byKey(const ValueKey('material_orders_list')), findsOneWidget);
+    expect(find.text('PLA'), findsOneWidget);
+    expect(find.text('example.com'), findsOneWidget);
+    expect(
+      find.byKey(
+        ValueKey('order_consumable_item_${savedOrder['id']}_0'),
+      ),
+      findsOneWidget,
+    );
+    expect(savedOrder['urgency'], 'Verde');
+    expect(savedOrder['cost'], 525.75);
+    final urgencyCell = find.byKey(
+      ValueKey('order_urgency_cell_${savedOrder['id']}'),
+    );
+    expect(tester.getSize(urgencyCell).width, 300);
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(
+              ValueKey('order_consumable_item_${savedOrder['id']}_0'),
+            ),
+          )
+          .dy,
+      greaterThan(tester.getBottomRight(urgencyCell).dy),
+    );
+    expect(
+      find.byTooltip(
+        'Verde · Reposición urgente: Filamento necesario para la impresión',
+      ),
+      findsOneWidget,
+    );
+    final savedRequests = savedOrder['consumableRequests'] as List;
+    expect(savedRequests, hasLength(1));
+    expect(savedRequests.single['name'], 'Boquilla de 0.4 mm');
+    expect(savedRequests.single['cost'], 24.5);
+    expect(
+      savedRequests.single['link'],
+      'https://consumables.example.com/nozzle',
+    );
+    expect(savedRequests.single['urgency'], 'Amarillo');
+    expect(
+      savedRequests.single['urgencyDetails'],
+      'La boquilla actual está desgastada',
+    );
+    expect(
+        savedOrder['urgencyDetails'], 'Filamento necesario para la impresión');
+
+    final editOrderButton = find.byKey(
+      ValueKey('edit_order_${savedOrder['id']}'),
+    );
+    await tester.ensureVisible(editOrderButton);
+    await tester.pumpAndSettle();
+    await tester.tap(editOrderButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('edit_order_link'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const ValueKey('edit_order_material'))).dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('edit_order_urgency'))).dy,
+      greaterThan(
+        tester.getTopLeft(find.byKey(const ValueKey('edit_order_weight'))).dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('edit_order_cost'))).dy,
+      greaterThan(
+        tester
+            .getBottomRight(
+              find.byKey(const ValueKey('edit_order_urgency_details')),
+            )
+            .dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const ValueKey('edit_order_cost'))).dy,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('edit_consumable_row_0')))
+            .dy,
+      ),
+    );
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('edit_consumable_link_0')))
+          .dy,
+      lessThan(tester
+          .getTopLeft(
+            find.byKey(const ValueKey('edit_consumable_name_0')),
+          )
+          .dy),
+    );
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('edit_consumable_name_0')))
+          .dy,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('edit_consumable_urgency_0')))
+            .dy,
+      ),
+    );
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('edit_consumable_urgency_0')))
+          .dy,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const ValueKey('edit_consumable_details_0')))
+            .dy,
+      ),
+    );
+    expect(
+      tester
+          .getTopLeft(find.byKey(const ValueKey('edit_consumable_cost_0')))
+          .dy,
+      greaterThan(
+        tester
+            .getBottomRight(
+              find.byKey(const ValueKey('edit_consumable_details_0')),
+            )
+            .dy,
+      ),
+    );
+    final orderCostWidth =
+        tester.getSize(find.byKey(const ValueKey('edit_order_cost'))).width;
+    final consumableCostWidth = tester
+        .getSize(find.byKey(const ValueKey('edit_consumable_cost_0')))
+        .width;
+    expect(orderCostWidth, closeTo(140, 1));
+    expect(consumableCostWidth, closeTo(140, 1));
+    final orderUrgencySize =
+        tester.getSize(find.byKey(const ValueKey('edit_order_urgency')));
+    final consumableUrgencySize = tester.getSize(
+      find.byKey(const ValueKey('edit_consumable_urgency_0')),
+    );
+    expect(consumableUrgencySize.width, orderUrgencySize.width);
+    expect(consumableUrgencySize.height, orderUrgencySize.height);
+    expect(orderUrgencySize.width, closeTo(300, 1));
+
+    Future<void> editField(Key key, String value) async {
+      final field = find.byKey(key);
+      await tester.ensureVisible(field);
+      await tester.enterText(field, value);
+    }
+
+    await editField(
+      const ValueKey('edit_order_link'),
+      'https://store.example.com/updated',
+    );
+    await editField(const ValueKey('edit_order_material'), 'PETG');
+    await editField(const ValueKey('edit_order_color'), 'Azul marino');
+    await editField(const ValueKey('edit_order_weight'), '1500 g');
+    await editField(
+        const ValueKey('edit_order_urgency_type'), 'Compra planeada');
+    await editField(
+      const ValueKey('edit_order_urgency_details'),
+      'Se actualizó la prioridad del material',
+    );
+    await editField(const ValueKey('edit_order_cost'), '875.50');
+    await editField(
+      const ValueKey('edit_consumable_name_0'),
+      'Boquilla de 0.6 mm',
+    );
+    await editField(
+      const ValueKey('edit_consumable_link_0'),
+      'https://store.example.com/nozzle-06',
+    );
+    await editField(const ValueKey('edit_consumable_cost_0'), '31.75');
+    await editField(
+      const ValueKey('edit_consumable_details_0'),
+      'La nueva boquilla se requiere para PETG',
+    );
+    final editUrgency = find.byKey(const ValueKey('edit_order_urgency'));
+    await tester.ensureVisible(editUrgency);
+    await tester.tap(editUrgency);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rojo').last);
+    await tester.pumpAndSettle();
+    final saveEdits = find.byKey(const ValueKey('save_order_edits'));
+    await tester.ensureVisible(saveEdits);
+    await tester.tap(saveEdits);
+    await tester.pumpAndSettle();
+
+    final updatedSavedOrders = jsonDecode(
+      preferences.getString('pedido_materiales_widget_v1')!,
+    ) as Map<String, dynamic>;
+    final updatedSavedOrder =
+        (updatedSavedOrders['orders'] as List).first as Map;
+    expect(updatedSavedOrder['link'], 'https://store.example.com/updated');
+    expect(updatedSavedOrder['material'], 'PETG');
+    expect(updatedSavedOrder['color'], 'Azul marino');
+    expect(updatedSavedOrder['spoolGrams'], 1500);
+    expect(updatedSavedOrder['urgency'], 'Rojo');
+    expect(updatedSavedOrder['urgencyType'], 'Compra planeada');
+    expect(updatedSavedOrder['urgencyDetails'],
+        'Se actualizó la prioridad del material');
+    expect(updatedSavedOrder['cost'], 875.5);
+    final updatedRequests = updatedSavedOrder['consumableRequests'] as List;
+    expect(updatedRequests.single['name'], 'Boquilla de 0.6 mm');
+    expect(
+      updatedRequests.single['link'],
+      'https://store.example.com/nozzle-06',
+    );
+    expect(updatedRequests.single['cost'], 31.75);
+    expect(updatedRequests.single['urgency'], 'Amarillo');
+    expect(
+      updatedRequests.single['urgencyDetails'],
+      'La nueva boquilla se requiere para PETG',
+    );
 
     final closeOrderForm = find.text('Cerrar formulario de pedido');
     await tester.ensureVisible(closeOrderForm);
@@ -798,7 +1291,8 @@ void main() {
     expect(copy.pieceType, 'brazo_robotico_v3.stl');
   });
 
-  testWidgets('Verifica filtro por semestres académicos en el análisis de producción',
+  testWidgets(
+      'Verifica filtro por semestres académicos en el análisis de producción',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
@@ -935,7 +1429,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Ninguno cumple ambos criterios (PETG tiene stock normal)
-    expect(find.textContaining('No hay materiales en este filtro'), findsOneWidget);
+    expect(find.textContaining('No hay materiales en este filtro'),
+        findsOneWidget);
 
     // Cambiar filtro de stock de nuevo a 'Todo el stock'
     await tester.tap(find.text('Bajo stock (≤ 20%)'));
