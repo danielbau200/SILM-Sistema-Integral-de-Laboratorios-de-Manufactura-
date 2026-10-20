@@ -85,7 +85,7 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
       draft.selectedUrgency = 'Rojo';
       draft.urgencyTypeController.text = 'Reposición de inventario';
       draft.urgencyDetailsController.text =
-          'Bobina agotada o con stock bajo en laboratorio';
+          'Carrete agotado o con stock bajo en laboratorio';
     });
     _showMessage(
       'Se cargó $material ($color) en el formulario de pedido.',

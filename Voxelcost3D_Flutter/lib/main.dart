@@ -22,7 +22,7 @@ class _VoxelcostAppState extends State<VoxelcostApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Voxelcost3D',
+      title: 'SILM',
       theme: voxelTheme(),
       home: _authenticated
           ? HomeScreen(

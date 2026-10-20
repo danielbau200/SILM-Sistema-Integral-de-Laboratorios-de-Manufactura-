@@ -16,7 +16,7 @@ void main() {
       (WidgetTester tester) async {
     await tester.pumpWidget(const VoxelcostApp());
 
-    expect(find.text('VOXELCOST3D'), findsOneWidget);
+    expect(find.text('SILM'), findsOneWidget);
     expect(find.text('ACCEDER AL TALLER'), findsOneWidget);
 
     final textFields = find.byType(TextField);

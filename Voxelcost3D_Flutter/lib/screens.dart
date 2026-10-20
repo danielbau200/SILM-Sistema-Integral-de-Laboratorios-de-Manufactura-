@@ -15,6 +15,8 @@ import 'pedido_materiales.dart'
     show PedidoMaterialesWidget, PedidoMaterialesWidgetState;
 import 'theme.dart';
 import 'word_inventory_exporter.dart';
+import 'institutional_settings.dart';
+import 'institutional_dialog.dart';
 
 void toast(BuildContext context, String message, {bool isError = false}) {
   ScaffoldMessenger.of(context)
@@ -60,9 +62,10 @@ Widget techButton(
   Color? foreground,
   IconData? icon,
   bool isOutlined = false,
-  double height = 44,
+  double height = 40,
 }) {
-  final buttonForeground = foreground ?? textPrimary;
+  final buttonForeground =
+      foreground ?? (isOutlined ? textPrimary : Colors.white);
   return MouseRegion(
     cursor:
         onPressed != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
@@ -71,32 +74,35 @@ Widget techButton(
       child: isOutlined
           ? OutlinedButton.icon(
               onPressed: onPressed,
-              icon: Icon(icon ?? Icons.check, size: 16),
+              icon: Icon(icon ?? Icons.check, size: 16, color: buttonForeground),
               label: Text(
-                text.toUpperCase(),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                  letterSpacing: 0.8,
+                text,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  letterSpacing: -0.1,
+                  color: buttonForeground,
                 ),
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: buttonForeground,
                 side: BorderSide(color: borderSubtle),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             )
           : ElevatedButton.icon(
               onPressed: onPressed,
-              icon: Icon(icon ?? Icons.check, size: 16),
+              icon: Icon(icon ?? Icons.check, size: 16, color: buttonForeground),
               label: Text(
-                text.toUpperCase(),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12,
-                  letterSpacing: 0.8,
+                text,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  letterSpacing: -0.1,
+                  color: buttonForeground,
                 ),
               ),
               style: ElevatedButton.styleFrom(
@@ -104,8 +110,9 @@ Widget techButton(
                 foregroundColor: buttonForeground,
                 elevation: 0,
                 shadowColor: Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
@@ -198,7 +205,7 @@ class _LoginState extends State<LoginScreen> with RestorationMixin {
             gradient: RadialGradient(
               center: const Alignment(0, -0.2),
               radius: 1.2,
-              colors: [const Color(0xFF1B2027), bgBase],
+              colors: [surfaceCard, bgBase],
             ),
           ),
           child: Center(
@@ -244,7 +251,7 @@ class _LoginState extends State<LoginScreen> with RestorationMixin {
                       ),
                       const SizedBox(height: 18),
                       Text(
-                        'VOXELCOST3D',
+                        'SILM',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 20,
@@ -438,6 +445,210 @@ class _ThemeModeSwitch extends StatelessWidget {
       );
 }
 
+class _SidebarItemWidget extends StatefulWidget {
+  final String title;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color primaryColor;
+  final Color textPrimary;
+  final Color textSecondary;
+  final bool isDarkMode;
+
+  const _SidebarItemWidget({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+    required this.primaryColor,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.isDarkMode,
+  });
+
+  @override
+  State<_SidebarItemWidget> createState() => _SidebarItemWidgetState();
+}
+
+class _SidebarItemWidgetState extends State<_SidebarItemWidget> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final hoverBg = widget.isDarkMode
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.05);
+
+    final selectedBg = widget.primaryColor.withValues(alpha: 0.14);
+
+    final bgColor = widget.selected
+        ? selectedBg
+        : (_isHovered ? hoverBg : Colors.transparent);
+
+    final iconColor = widget.selected
+        ? widget.primaryColor
+        : (_isHovered ? widget.textPrimary : widget.textSecondary);
+
+    final textColor = widget.selected
+        ? widget.primaryColor
+        : widget.textPrimary;
+
+    final chevronColor = widget.selected
+        ? widget.primaryColor
+        : (_isHovered
+            ? widget.textPrimary.withValues(alpha: 0.8)
+            : widget.textSecondary.withValues(alpha: 0.45));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            curve: Curves.easeInOut,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  widget.icon,
+                  size: 19,
+                  color: iconColor,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 13,
+                      fontWeight:
+                          widget.selected ? FontWeight.w700 : FontWeight.w500,
+                      letterSpacing: 0.1,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 16,
+                  color: chevronColor,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarUserButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final bool isMenuOpen;
+  final bool isDarkMode;
+  final Color textPrimary;
+  final Color textSecondary;
+
+  const _SidebarUserButton({
+    super.key,
+    required this.onTap,
+    required this.isMenuOpen,
+    required this.isDarkMode,
+    required this.textPrimary,
+    required this.textSecondary,
+  });
+
+  @override
+  State<_SidebarUserButton> createState() => _SidebarUserButtonState();
+}
+
+class _SidebarUserButtonState extends State<_SidebarUserButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isHighlighted = _isHovered || widget.isMenuOpen;
+    final hoverBg = widget.isDarkMode
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.black.withValues(alpha: 0.06);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: isHighlighted ? hoverBg : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: widget.isDarkMode
+                      ? const Color(0xFF222226)
+                      : const Color(0xFFE2E6EC),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    'DE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: widget.textPrimary,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Daniel',
+                  style: TextStyle(
+                    color: widget.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: -0.1,
+                    fontFamily: '-apple-system',
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 18,
+                color: widget.textSecondary.withValues(alpha: 0.8),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class HomeScreen extends StatefulWidget {
   final VoidCallback onLogout;
   final bool isDarkMode;
@@ -455,8 +666,10 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final GlobalKey _userMenuKey = GlobalKey();
   bool _isPinned = false;
   bool _isHovered = false;
+  bool _isUserMenuOpen = false;
   ActivePanel _activePanel = ActivePanel.welcome;
   Timer? _menuCloseTimer;
   late final PrintViewModel printVm = PrintViewModel(AppDatabase());
@@ -476,6 +689,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _activePanel = panel;
       _isPinned = false;
       _isHovered = false;
+      _isUserMenuOpen = false;
     });
   }
 
@@ -493,7 +707,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onHoverMenu(bool hovered) {
-    if (_isPinned) return;
+    if (_isPinned || _isUserMenuOpen) return;
     _menuCloseTimer?.cancel();
     if (hovered) {
       if (!_isHovered) {
@@ -505,7 +719,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Período de gracia de 350ms para que al mover el cursor hacia arriba,
       // hacia los lados o por el encabezado el menú se mantenga abierto sin cerrarse bruscamente.
       _menuCloseTimer = Timer(const Duration(milliseconds: 350), () {
-        if (mounted && !_isPinned && _isHovered) {
+        if (mounted && !_isPinned && !_isUserMenuOpen && _isHovered) {
           setState(() {
             _isHovered = false;
           });
@@ -516,7 +730,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final bool showMenu = _isPinned || _isHovered;
+    final bool showMenu = _isPinned || _isHovered || _isUserMenuOpen;
 
     return Scaffold(
       backgroundColor: bgBase,
@@ -643,7 +857,7 @@ class _HomeScreenState extends State<HomeScreen> {
             height: kToolbarHeight,
             padding: const EdgeInsets.symmetric(horizontal: 4),
             decoration: BoxDecoration(
-              color: bgBase,
+              color: surfaceCard,
               border: Border(bottom: BorderSide(color: borderSubtle)),
             ),
             child: Row(
@@ -652,7 +866,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   width: 48,
                   height: kToolbarHeight,
                   child: IconButton(
-                    hoverColor: Colors.transparent,
+                    hoverColor: surfaceElevated,
                     highlightColor: Colors.transparent,
                     splashColor: Colors.transparent,
                     focusColor: Colors.transparent,
@@ -665,23 +879,17 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    'MENÚ PRINCIPAL',
+                    'Menú Principal',
                     style: TextStyle(
                       color: textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.2,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: _ThemeModeSwitch(
-                    isDarkMode: widget.isDarkMode,
-                    onChanged: widget.onThemeModeChanged,
-                  ),
-                ),
+                const SizedBox(width: 12),
               ],
             ),
           ),
@@ -737,46 +945,24 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Pie del Menú con Cerrar Sesión
-          Divider(color: borderSubtle, height: 1),
+          // Pie del Menú con Cuenta de Usuario interactiva
+          Divider(color: borderSubtle.withValues(alpha: 0.6), height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                InkWell(
-                  onTap: widget.onLogout,
-                  borderRadius: BorderRadius.circular(8),
-                  mouseCursor: SystemMouseCursors.click,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: surfaceElevated,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: borderSubtle),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.logout_rounded,
-                            size: 16, color: textSecondary),
-                        const SizedBox(width: 8),
-                        Text(
-                          'CERRAR SESIÓN',
-                          style: TextStyle(
-                            color: textSecondary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                _SidebarUserButton(
+                  key: _userMenuKey,
+                  onTap: () => _openUserMenu(context),
+                  isMenuOpen: _isUserMenuOpen,
+                  isDarkMode: isVoxelDarkMode,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 Text(
-                  'VoxelCost 3D · Control de Taller',
+                  'SILM · Control de Taller',
                   style: TextStyle(
                     color: textMuted,
                     fontSize: 10,
@@ -791,6 +977,163 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openUserMenu(BuildContext context) async {
+    _menuCloseTimer?.cancel();
+    setState(() {
+      _isUserMenuOpen = true;
+      _isHovered = true;
+    });
+
+    final renderBox =
+        _userMenuKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) {
+      if (mounted) setState(() => _isUserMenuOpen = false);
+      return;
+    }
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        offset.dx,
+        offset.dy - 170,
+        offset.dx + size.width,
+        offset.dy,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: borderSubtle),
+      ),
+      color: surfaceCard,
+      elevation: 8,
+      items: [
+        PopupMenuItem<String>(
+          enabled: false,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'dnaielbautista8@gmail.com',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: '-apple-system',
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Administrador de Laboratorio',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 11,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        PopupMenuItem<String>(
+          value: 'config',
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Icon(Icons.tune_rounded, size: 16, color: textSecondary),
+              const SizedBox(width: 10),
+              Text(
+                'Plantillas y Datos Institucionales',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'theme',
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Icon(
+                widget.isDarkMode
+                    ? Icons.light_mode_outlined
+                    : Icons.dark_mode_outlined,
+                size: 16,
+                color: textSecondary,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                widget.isDarkMode
+                    ? 'Cambiar a Modo Claro'
+                    : 'Cambiar a Modo Oscuro',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        PopupMenuItem<String>(
+          value: 'logout',
+          height: 38,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: Row(
+            children: [
+              Icon(Icons.logout_rounded, size: 16, color: textSecondary),
+              const SizedBox(width: 10),
+              Text(
+                'Cerrar sesión',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (!context.mounted) return;
+    if (selected == 'config') {
+      setState(() {
+        _isPinned = true;
+      });
+      await InstitutionalSettingsDialog.show(context);
+      if (mounted) {
+        setState(() {
+          _isUserMenuOpen = false;
+        });
+      }
+    } else if (selected == 'theme') {
+      setState(() => _isUserMenuOpen = false);
+      widget.onThemeModeChanged(!widget.isDarkMode);
+    } else if (selected == 'logout') {
+      setState(() => _isUserMenuOpen = false);
+      widget.onLogout();
+    } else {
+      if (mounted) {
+        setState(() => _isUserMenuOpen = false);
+      }
+    }
+  }
+
   Widget _buildSidebarItem({
     required String title,
     required IconData icon,
@@ -798,35 +1141,15 @@ class _HomeScreenState extends State<HomeScreen> {
     required VoidCallback onTap,
   }) {
     final primaryColor = Theme.of(context).colorScheme.primary;
-    return Material(
-      color: surfaceCard,
-      child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        hoverColor: Colors.transparent,
-        selected: selected,
-        selectedTileColor: primaryColor.withValues(alpha: 0.14),
-        selectedColor: primaryColor,
-        leading: Icon(icon, size: 20),
-        title: Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: selected ? primaryColor : textPrimary,
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            letterSpacing: 0.2,
-          ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right_rounded,
-          size: 16,
-          color: selected ? primaryColor : textSecondary,
-        ),
-        onTap: onTap,
-      ),
+    return _SidebarItemWidget(
+      title: title,
+      icon: icon,
+      selected: selected,
+      onTap: onTap,
+      primaryColor: primaryColor,
+      textPrimary: textPrimary,
+      textSecondary: textSecondary,
+      isDarkMode: isVoxelDarkMode,
     );
   }
 
@@ -834,8 +1157,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return AnimatedBuilder(
       animation: Listenable.merge([printVm, inventoryVm]),
       builder: (context, _) {
-        final latest = printVm.latestRecord;
-        final lowStock = inventoryVm.lowStockItems;
+        final recentRecords = printVm.allRecords.take(3).toList();
 
         return Scaffold(
           backgroundColor: bgBase,
@@ -848,150 +1170,149 @@ class _HomeScreenState extends State<HomeScreen> {
             hideLeading: _isPinned,
           ),
           body: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: double.infinity),
-              child: ListView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-                children: [
-                  // Cabecera compacta con saludo industrial
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 16),
-                    decoration: BoxDecoration(
-                      color: surfaceCard,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: borderSubtle),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 640),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Saludo centrado tipo macOS
+                    Text(
+                      'Hola, Daniel',
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                        fontFamily: '-apple-system',
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: surfaceElevated,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                                color: accentPetrol.withValues(alpha: 0.4)),
+                    const SizedBox(height: 20),
+
+                    // Tarjeta flotante macOS
+                    Container(
+                      decoration: BoxDecoration(
+                        color: surfaceCard,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: borderSubtle),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(
+                                alpha: isVoxelDarkMode ? 0.35 : 0.06),
+                            blurRadius: 24,
+                            offset: const Offset(0, 8),
                           ),
-                          child: const Icon(Icons.layers_outlined,
-                              size: 24, color: accentPetrol),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'VOXELCOST 3D · SISTEMA DE CONTROL DE FABRICACIÓN',
-                                style: TextStyle(
-                                  color: textSecondary,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.1,
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Barra tipo Raycast (Acción principal)
+                          _RaycastCommandBar(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PrintFormScreen(
+                                  vm: printVm,
+                                  inventoryVm: inventoryVm,
                                 ),
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '¡BIENVENIDO!',
-                                style: TextStyle(
-                                  color: textPrimary,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.0,
-                                ),
-                              ),
-                            ],
+                            ),
+                            isDarkMode: isVoxelDarkMode,
+                            textPrimary: textPrimary,
+                            textSecondary: textSecondary,
+                            accentPetrol: accentPetrol,
+                            borderSubtle: borderSubtle,
                           ),
-                        ),
-                        techButton(
-                          'NUEVA IMPRESIÓN',
-                          () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PrintFormScreen(
-                                vm: printVm,
-                                inventoryVm: inventoryVm,
+                          const SizedBox(height: 18),
+
+                          // Encabezado de sección
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(
+                              'TRABAJOS RECIENTES',
+                              style: TextStyle(
+                                color: textSecondary.withValues(alpha: 0.8),
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                                fontFamily: '-apple-system',
                               ),
                             ),
                           ),
-                          icon: Icons.add_circle_outline,
-                          color: accentPetrol,
-                          height: 38,
-                        ),
-                      ],
+                          const SizedBox(height: 8),
+
+                          // Lista de últimos trabajos
+                          if (recentRecords.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 16),
+                              child: Text(
+                                'No hay piezas registradas aún.',
+                                style: TextStyle(
+                                  color: textSecondary,
+                                  fontSize: 12.5,
+                                  fontFamily: '-apple-system',
+                                ),
+                              ),
+                            )
+                          else
+                            ...recentRecords.map(
+                              (r) => _RaycastRecentItem(
+                                record: r,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => PrintFormScreen(
+                                      vm: printVm,
+                                      inventoryVm: inventoryVm,
+                                      record: r,
+                                    ),
+                                  ),
+                                ),
+                                isDarkMode: isVoxelDarkMode,
+                                textPrimary: textPrimary,
+                                textSecondary: textSecondary,
+                                textMuted: textMuted,
+                              ),
+                            ),
+
+                          const SizedBox(height: 6),
+                          Divider(
+                              color: borderSubtle.withValues(alpha: 0.6),
+                              height: 1),
+                          const SizedBox(height: 10),
+
+                          // Enlace al historial completo
+                          Center(
+                            child: MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: () =>
+                                    _selectPanel(ActivePanel.printHistory),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 4, horizontal: 8),
+                                  child: Text(
+                                    'Ver todo el historial técnico (${printVm.allRecords.length}) →',
+                                    style: TextStyle(
+                                      color: accentPetrol,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      fontFamily: '-apple-system',
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-
-                  // Resumen Rápido (4 Tarjetas)
-                  LayoutBuilder(builder: (context, constraints) {
-                    final isNarrow = constraints.maxWidth < 650;
-                    final cardWidth = isNarrow
-                        ? constraints.maxWidth
-                        : (constraints.maxWidth - 12) / 2;
-
-                    return Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        SizedBox(
-                          width: cardWidth,
-                          child: _welcomeMetricCard(
-                            title: 'CONSUMO TOTAL',
-                            value: '${printVm.totalGrams.toStringAsFixed(1)} g',
-                            subtitle:
-                                '${printVm.totalPlaGrams.toStringAsFixed(0)}g PLA · ${printVm.totalPetgGrams.toStringAsFixed(0)}g PETG',
-                            icon: Icons.scale_outlined,
-                            iconColor: accentPetrol,
-                            badgeText: '${printVm.totalPieces} piezas',
-                          ),
-                        ),
-                        SizedBox(
-                          width: cardWidth,
-                          child: _welcomeMetricCard(
-                            title: 'PIEZAS FABRICADAS',
-                            value: '${printVm.totalPieces} piezas',
-                            subtitle:
-                                '${printVm.totalPrints} registros técnicos en historial',
-                            icon: Icons.precision_manufacturing_outlined,
-                            iconColor: accentAmber,
-                            badgeText: printVm.totalPieces > 0
-                                ? 'Activo'
-                                : 'Sin piezas',
-                          ),
-                        ),
-                        SizedBox(
-                          width: cardWidth,
-                          child: _welcomeMetricCard(
-                            title: 'ESTADO DE STOCK',
-                            value: lowStock.isEmpty
-                                ? 'Niveles Óptimos'
-                                : '${lowStock.length} Bajo Stock',
-                            subtitle: lowStock.isEmpty
-                                ? 'Todas las bobinas con stock > 20%'
-                                : lowStock
-                                    .map((i) =>
-                                        '${i.material} ${i.color} (${i.stockActual.toInt()}g)')
-                                    .join(', '),
-                            icon: lowStock.isEmpty
-                                ? Icons.check_circle_outline
-                                : Icons.warning_amber_rounded,
-                            iconColor: lowStock.isEmpty
-                                ? semanticSuccess
-                                : semanticDanger,
-                            isAlert: lowStock.isNotEmpty,
-                            badgeText: lowStock.isEmpty ? 'OK' : 'ATENCIÓN',
-                          ),
-                        ),
-                        SizedBox(
-                          width: cardWidth,
-                          child: _welcomeLastPrintCard(latest),
-                        ),
-                      ],
-                    );
-                  }),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -999,230 +1320,211 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
+}
 
-  Widget _welcomeMetricCard({
-    required String title,
-    required String value,
-    required String subtitle,
-    required IconData icon,
-    required Color iconColor,
-    String? badgeText,
-    bool isAlert = false,
-  }) =>
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: surfaceCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color:
-                isAlert ? semanticDanger.withValues(alpha: 0.5) : borderSubtle,
+class _RaycastCommandBar extends StatefulWidget {
+  final VoidCallback onTap;
+  final bool isDarkMode;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color accentPetrol;
+  final Color borderSubtle;
+
+  const _RaycastCommandBar({
+    required this.onTap,
+    required this.isDarkMode,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.accentPetrol,
+    required this.borderSubtle,
+  });
+
+  @override
+  State<_RaycastCommandBar> createState() => _RaycastCommandBarState();
+}
+
+class _RaycastCommandBarState extends State<_RaycastCommandBar> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = _isHovered
+        ? widget.accentPetrol.withValues(alpha: 0.12)
+        : (widget.isDarkMode
+            ? Colors.white.withValues(alpha: 0.05)
+            : Colors.black.withValues(alpha: 0.04));
+
+    final borderColor = _isHovered
+        ? widget.accentPetrol.withValues(alpha: 0.5)
+        : widget.borderSubtle;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: iconColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, size: 18, color: iconColor),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-                if (badgeText != null)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: (isAlert ? semanticDanger : accentPetrol)
-                          .withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: (isAlert ? semanticDanger : accentPetrol)
-                            .withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Text(
-                      badgeText,
-                      style: TextStyle(
-                        color: isAlert ? semanticDanger : accentPetrol,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: TextStyle(
-                color: isAlert ? semanticDanger : textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
+          child: Row(
+            children: [
+              Icon(
+                Icons.add_rounded,
+                size: 20,
+                color: _isHovered ? widget.accentPetrol : widget.textSecondary,
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              subtitle,
-              style: TextStyle(
-                color: textSecondary,
-                fontSize: 11,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      );
-
-  Widget _welcomeLastPrintCard(PrintRecord? latest) => Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: surfaceCard,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: borderSubtle),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: surfaceElevated,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.history_toggle_off_outlined,
-                      size: 18, color: accentPetrol),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'ÚLTIMA PIEZA REGISTRADA',
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                    ),
-                  ),
-                ),
-                if (latest != null)
-                  Text(
-                    dateText(latest.date, short: true),
-                    style: TextStyle(color: textMuted, fontSize: 10),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (latest == null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
+              const SizedBox(width: 10),
+              Expanded(
                 child: Text(
-                  'Aún no hay impresiones registradas',
-                  style: TextStyle(color: textSecondary, fontSize: 12),
-                ),
-              )
-            else ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      (latest.projectName ?? '').trim().isNotEmpty
-                          ? latest.projectName!
-                          : latest.pieceType,
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  'Registrar nueva pieza fabricada...',
+                  style: TextStyle(
+                    color: _isHovered ? widget.textPrimary : widget.textSecondary,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: -0.1,
+                    fontFamily: '-apple-system',
                   ),
-                  if (latest.cantidad > 1) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: accentAmber.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                            color: accentAmber.withValues(alpha: 0.5)),
-                      ),
-                      child: Text(
-                        '×${latest.cantidad}',
-                        style: const TextStyle(
-                          color: accentAmber,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              if ((latest.projectName ?? '').trim().isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'Archivo: ${latest.pieceType}',
-                  style: TextStyle(color: textSecondary, fontSize: 11),
                 ),
-              ],
-              const SizedBox(height: 3),
-              Text(
-                'Categoría: ${latest.figureCategory} · ${latest.totalGrams.toStringAsFixed(1)}g total${latest.cantidad > 1 ? ' (${latest.unitGrams.toStringAsFixed(1)}g c/u)' : ''}',
-                style: TextStyle(color: textSecondary, fontSize: 11),
               ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: latest.materials.map((m) {
-                  final colorObj =
-                      findVoxelColor(value: m.color, name: m.colorName);
-                  final itemTotalGrams = m.grams * latest.cantidad;
-                  return Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      colorSwatchCircle(colorObj.color,
-                          size: 8, isTransparent: colorObj.isTransparent),
-                      const SizedBox(width: 4),
-                      Text(
-                        latest.cantidad > 1
-                            ? '${m.type} (${itemTotalGrams.toStringAsFixed(1)}g)'
-                            : '${m.type} (${m.grams.toStringAsFixed(1)}g)',
-                        style: TextStyle(
-                            color: textPrimary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  );
-                }).toList(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: widget.isDarkMode
+                      ? Colors.white.withValues(alpha: 0.08)
+                      : Colors.black.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Nuevo',
+                  style: TextStyle(
+                    color: widget.textSecondary,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: '-apple-system',
+                  ),
+                ),
               ),
             ],
-          ],
+          ),
         ),
-      );
+      ),
+    );
+  }
+}
+
+class _RaycastRecentItem extends StatefulWidget {
+  final PrintRecord record;
+  final VoidCallback onTap;
+  final bool isDarkMode;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color textMuted;
+
+  const _RaycastRecentItem({
+    required this.record,
+    required this.onTap,
+    required this.isDarkMode,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.textMuted,
+  });
+
+  @override
+  State<_RaycastRecentItem> createState() => _RaycastRecentItemState();
+}
+
+class _RaycastRecentItemState extends State<_RaycastRecentItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.record;
+    final hoverBg = widget.isDarkMode
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
+
+    final title = (r.projectName ?? '').trim().isNotEmpty
+        ? r.projectName!.trim()
+        : r.pieceType.trim();
+
+    final applicant = (r.requesterName ?? '').trim().isNotEmpty
+        ? r.requesterName!.trim()
+        : 'Sin solicitante';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: widget.onTap,
+          behavior: HitTestBehavior.opaque,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: _isHovered ? hoverBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: widget.textPrimary,
+                          fontSize: 13,
+                          fontWeight:
+                              _isHovered ? FontWeight.w600 : FontWeight.w500,
+                          letterSpacing: -0.1,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        applicant,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: widget.textSecondary,
+                          fontSize: 11.5,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  dateText(r.date, short: true),
+                  style: TextStyle(
+                    color: widget.textMuted,
+                    fontSize: 11,
+                    fontFamily: '-apple-system',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MaterialOrderScreen extends StatefulWidget {
@@ -1291,7 +1593,7 @@ class _MaterialOrderScreenState extends State<MaterialOrderScreen> {
                 formCard(
                   title: 'Lista de pedido',
                   subtitle:
-                      'El inventario marca para reponer las bobinas con 20% o menos',
+                      'El inventario marca para reponer los carretes con 20% o menos',
                   child: lowStockItems.isEmpty
                       ? Padding(
                           padding: const EdgeInsets.symmetric(vertical: 18),
@@ -1467,6 +1769,30 @@ class _HistoryState extends State<PrintHistoryScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _periodFilter = 'ACTUAL';
   String _materialFilter = 'TODOS';
+  bool _isCardView = false;
+
+  Map<String, List<PrintRecord>> _groupByMonth(List<PrintRecord> records) {
+    final Map<String, List<PrintRecord>> groups = {};
+    const months = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+    for (final r in records) {
+      final d = DateTime.fromMillisecondsSinceEpoch(r.date);
+      final key = '${months[d.month - 1]} ${d.year}';
+      groups.putIfAbsent(key, () => []).add(r);
+    }
+    return groups;
+  }
+
+  static String formatShortDate(int milliseconds) {
+    final d = DateTime.fromMillisecondsSinceEpoch(milliseconds);
+    const months = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'sep', 'oct', 'nov', 'dic'
+    ];
+    return '${d.day} ${months[d.month - 1]} ${d.year}';
+  }
 
   @override
   void initState() {
@@ -1635,61 +1961,96 @@ class _HistoryState extends State<PrintHistoryScreen> {
             backgroundColor: bgBase,
             body: LayoutBuilder(
               builder: (context, constraints) {
-                final isNarrow = constraints.maxWidth < 820;
-                return ListView(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                final isNarrow = constraints.maxWidth < 860;
+                final double totalGrams =
+                    filtered.fold(0.0, (acc, r) => acc + r.totalGrams);
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _searchAndFilterRow(filtered.length),
-                    const SizedBox(height: 18),
-                    if (vm.error != null) ...[
-                      _databaseError(vm.error!),
-                      const SizedBox(height: 14),
-                    ],
-                    if (filtered.isEmpty)
-                      _emptyState(_searchController.text.isNotEmpty ||
-                          _periodFilter != 'TODOS' ||
-                          _materialFilter != 'TODOS')
-                    else
-                      Container(
-                        decoration: BoxDecoration(
-                          color: surfaceCard,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: borderSubtle),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(
-                                  alpha: isVoxelDarkMode ? 0.25 : 0.03),
-                              blurRadius: 10,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _tableHeader(isNarrow, filtered.length),
-                            Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: borderSubtle,
-                            ),
-                            for (int i = 0; i < filtered.length; i++) ...[
-                              if (i > 0)
-                                Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  color: borderSubtle.withValues(
-                                      alpha: isVoxelDarkMode ? 0.5 : 0.65),
-                                ),
-                              _recordRow(context, vm, filtered[i],
-                                  isNarrow: isNarrow),
-                            ],
-                          ],
-                        ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: _searchAndFilterRow(filtered.length),
+                    ),
+                    _statsBar(filtered.length, totalGrams, isNarrow: isNarrow),
+                    if (vm.error != null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                        child: _databaseError(vm.error!),
                       ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 4),
+                    Expanded(
+                      child: filtered.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                              child: _emptyState(
+                                _searchController.text.isNotEmpty ||
+                                    _periodFilter != 'TODOS' ||
+                                    _materialFilter != 'TODOS',
+                              ),
+                            )
+                          : _isCardView
+                              ? ListView(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                  children: [
+                                    _buildCardsGrid(
+                                        filtered, constraints.maxWidth),
+                                  ],
+                                )
+                              : Container(
+                                  margin:
+                                      const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                                  decoration: BoxDecoration(
+                                    color: surfaceCard,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: borderSubtle),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(
+                                            alpha: isVoxelDarkMode
+                                                ? 0.2
+                                                : 0.03),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  clipBehavior: Clip.antiAlias,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      _tableHeader(isNarrow, filtered.length),
+                                      Divider(
+                                        height: 1,
+                                        thickness: 1,
+                                        color: borderSubtle,
+                                      ),
+                                      Expanded(
+                                        child: ListView.separated(
+                                          itemCount: filtered.length,
+                                          separatorBuilder: (_, __) => Divider(
+                                            height: 1,
+                                            thickness: 1,
+                                            color: borderSubtle.withValues(
+                                                alpha: isVoxelDarkMode
+                                                    ? 0.35
+                                                    : 0.5),
+                                          ),
+                                          itemBuilder: (context, i) =>
+                                              _recordRow(
+                                            context,
+                                            vm,
+                                            filtered[i],
+                                            isNarrow: isNarrow,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                    ),
                   ],
                 );
               },
@@ -1774,21 +2135,100 @@ class _HistoryState extends State<PrintHistoryScreen> {
         ),
       );
 
+  Widget _buildSectionHeader(String title, int count, double grams) {
+    final gramsStr = grams % 1 == 0
+        ? '${grams.toInt()} g'
+        : '${grams.toStringAsFixed(1)} g';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 2, left: 2, right: 2),
+      child: Row(
+        children: [
+          Icon(Icons.calendar_month_outlined, size: 14, color: textSecondary),
+          const SizedBox(width: 6),
+          Text(
+            title.toUpperCase(),
+            style: TextStyle(
+              color: textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              fontFamily: '-apple-system',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: surfaceElevated,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: borderSubtle),
+            ),
+            child: Text(
+              '$count ${count == 1 ? 'impresión' : 'impresiones'} • $gramsStr',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                fontFamily: '-apple-system',
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Divider(
+              height: 1,
+              thickness: 1,
+              color: borderSubtle.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardsGrid(List<PrintRecord> records, double maxWidth) {
+    final double cardWidth = maxWidth > 1400
+        ? (maxWidth - 32 - 42) / 4
+        : (maxWidth > 1050
+            ? (maxWidth - 32 - 28) / 3
+            : (maxWidth > 700 ? (maxWidth - 32 - 14) / 2 : maxWidth - 32));
+
+    return Wrap(
+      spacing: 14,
+      runSpacing: 14,
+      children: [
+        for (final r in records)
+          SizedBox(
+            width: cardWidth,
+            child: _PrintRecordCard(
+              key: ValueKey(r.id),
+              record: r,
+              vm: vm,
+              inventoryVm: inventoryVm,
+              onDelete: (rec) =>
+                  _confirmDeleteRecord(context, vm, inventoryVm, rec),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _searchAndFilterRow([int totalCount = 0]) {
     return LayoutBuilder(builder: (context, constraints) {
       final isNarrow = constraints.maxWidth < 960;
 
-      // 1. Buscador con estilo macOS
+      // 1. Buscador con estilo macOS (Spotlight / Finder style)
       final searchField = Container(
-        height: 42,
+        height: 36,
         decoration: BoxDecoration(
           color: surfaceCard,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: borderSubtle),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
-              blurRadius: 4,
+              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.025),
+              blurRadius: 3,
               offset: const Offset(0, 1),
             ),
           ],
@@ -1798,18 +2238,24 @@ class _HistoryState extends State<PrintHistoryScreen> {
           onChanged: (_) => setState(() {}),
           style: TextStyle(
             color: textPrimary,
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.w400,
+            fontFamily: '-apple-system',
           ),
           decoration: InputDecoration(
             isDense: true,
             hintText: 'Buscar por pieza, solicitante, material o impresora...',
-            hintStyle: TextStyle(color: textMuted, fontSize: 13.5),
-            prefixIcon: Icon(Icons.search_rounded, size: 20, color: textMuted),
+            hintStyle: TextStyle(
+              color: textMuted,
+              fontSize: 12.5,
+              fontFamily: '-apple-system',
+            ),
+            prefixIcon: Icon(Icons.search_rounded, size: 18, color: textMuted),
             suffixIcon: _searchController.text.isNotEmpty
                 ? IconButton(
-                    icon: Icon(Icons.cancel_rounded, size: 18, color: textMuted),
-                    splashRadius: 16,
+                    icon: Icon(Icons.cancel_rounded, size: 16, color: textMuted),
+                    splashRadius: 14,
+                    padding: EdgeInsets.zero,
                     onPressed: () {
                       _searchController.clear();
                       setState(() {});
@@ -1819,16 +2265,16 @@ class _HistoryState extends State<PrintHistoryScreen> {
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: accentPetrol, width: 1.5),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: accentPetrol, width: 1.2),
             ),
             contentPadding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
           ),
         ),
       );
 
-      // 2. Opciones de Semestre / Periodo (igual que en ExportScreen)
+      // 2. Opciones de Semestre / Periodo (estilo macOS NSPopUpButton)
       final now = DateTime.now();
       final currentSem = AcademicSemesterInfo.getCurrent(now);
       final prevSem = AcademicSemesterInfo.getPrevious(now);
@@ -1841,11 +2287,11 @@ class _HistoryState extends State<PrintHistoryScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.school_outlined, size: 15, color: accentPetrol),
-              const SizedBox(width: 8),
+              const Icon(Icons.school_outlined, size: 14, color: accentPetrol),
+              const SizedBox(width: 7),
               Text('Semestre Actual (${currentSem.shortTerm})',
                   style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600)),
+                      fontSize: 12.5, fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -1855,11 +2301,11 @@ class _HistoryState extends State<PrintHistoryScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(Icons.history_edu_outlined,
-                  size: 15, color: accentPetrol),
-              const SizedBox(width: 8),
+                  size: 14, color: accentPetrol),
+              const SizedBox(width: 7),
               Text('Semestre Anterior (${prevSem.shortTerm})',
                   style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600)),
+                      fontSize: 12.5, fontWeight: FontWeight.w600)),
             ],
           ),
         ),
@@ -1877,9 +2323,9 @@ class _HistoryState extends State<PrintHistoryScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.calendar_month_outlined,
-                    size: 15, color: textSecondary),
-                const SizedBox(width: 8),
-                Text(sem.term, style: const TextStyle(fontSize: 13)),
+                    size: 14, color: textSecondary),
+                const SizedBox(width: 7),
+                Text(sem.term, style: const TextStyle(fontSize: 12.5)),
               ],
             ),
           ),
@@ -1892,9 +2338,9 @@ class _HistoryState extends State<PrintHistoryScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.calendar_view_month, size: 15, color: textMuted),
-              const SizedBox(width: 8),
-              const Text('Este mes', style: TextStyle(fontSize: 13)),
+              Icon(Icons.calendar_view_month, size: 14, color: textMuted),
+              const SizedBox(width: 7),
+              const Text('Este mes', style: TextStyle(fontSize: 12.5)),
             ],
           ),
         ),
@@ -1903,9 +2349,9 @@ class _HistoryState extends State<PrintHistoryScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.date_range, size: 15, color: textMuted),
-              const SizedBox(width: 8),
-              const Text('Últimos 7 días', style: TextStyle(fontSize: 13)),
+              Icon(Icons.date_range, size: 14, color: textMuted),
+              const SizedBox(width: 7),
+              const Text('Últimos 7 días', style: TextStyle(fontSize: 12.5)),
             ],
           ),
         ),
@@ -1914,9 +2360,9 @@ class _HistoryState extends State<PrintHistoryScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.today, size: 15, color: textMuted),
-              const SizedBox(width: 8),
-              const Text('Hoy', style: TextStyle(fontSize: 13)),
+              Icon(Icons.today, size: 14, color: textMuted),
+              const SizedBox(width: 7),
+              const Text('Hoy', style: TextStyle(fontSize: 12.5)),
             ],
           ),
         ),
@@ -1925,9 +2371,10 @@ class _HistoryState extends State<PrintHistoryScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.all_inclusive, size: 15, color: textMuted),
-              const SizedBox(width: 8),
-              const Text('Histórico completo', style: TextStyle(fontSize: 13)),
+              Icon(Icons.all_inclusive, size: 14, color: textMuted),
+              const SizedBox(width: 7),
+              const Text('Histórico completo',
+                  style: TextStyle(fontSize: 12.5)),
             ],
           ),
         ),
@@ -1939,7 +2386,7 @@ class _HistoryState extends State<PrintHistoryScreen> {
           periodItems.add(
             DropdownMenuItem(
               value: _periodFilter,
-              child: Text(s.term, style: const TextStyle(fontSize: 13)),
+              child: Text(s.term, style: const TextStyle(fontSize: 12.5)),
             ),
           );
         } else {
@@ -1948,20 +2395,20 @@ class _HistoryState extends State<PrintHistoryScreen> {
       }
 
       final periodSelector = Container(
-        height: 42,
+        height: 36,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: surfaceCard,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: _periodFilter != 'TODOS'
-                ? accentPetrol.withValues(alpha: 0.5)
+                ? accentPetrol.withValues(alpha: 0.45)
                 : borderSubtle,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
-              blurRadius: 4,
+              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.025),
+              blurRadius: 3,
               offset: const Offset(0, 1),
             ),
           ],
@@ -1970,9 +2417,9 @@ class _HistoryState extends State<PrintHistoryScreen> {
           child: DropdownButton<String>(
             value: _periodFilter,
             dropdownColor: surfaceCard,
-            borderRadius: BorderRadius.circular(10),
-            icon: Icon(Icons.arrow_drop_down_rounded,
-                color: textSecondary, size: 22),
+            borderRadius: BorderRadius.circular(8),
+            icon: Icon(Icons.keyboard_arrow_down_rounded,
+                color: textSecondary, size: 18),
             items: periodItems,
             onChanged: (val) {
               if (val != null) {
@@ -1981,27 +2428,28 @@ class _HistoryState extends State<PrintHistoryScreen> {
             },
             style: TextStyle(
               color: textPrimary,
-              fontSize: 13,
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
+              fontFamily: '-apple-system',
             ),
           ),
         ),
       );
 
-      // 3. Dropdown de Tipo de Material
+      // 3. Dropdown de Tipo de Material (estilo macOS)
       final availableMaterials = _getAvailableMaterials();
       if (!availableMaterials.contains(_materialFilter)) {
         _materialFilter = 'TODOS';
       }
 
       final materialSelector = Container(
-        height: 42,
+        height: 36,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: _materialFilter != 'TODOS'
               ? accentPetrol.withValues(alpha: 0.08)
               : surfaceCard,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: _materialFilter != 'TODOS'
                 ? accentPetrol
@@ -2009,8 +2457,8 @@ class _HistoryState extends State<PrintHistoryScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
-              blurRadius: 4,
+              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.025),
+              blurRadius: 3,
               offset: const Offset(0, 1),
             ),
           ],
@@ -2019,9 +2467,9 @@ class _HistoryState extends State<PrintHistoryScreen> {
           child: DropdownButton<String>(
             value: _materialFilter,
             dropdownColor: surfaceCard,
-            borderRadius: BorderRadius.circular(10),
-            icon: Icon(Icons.arrow_drop_down_rounded,
-                color: textSecondary, size: 22),
+            borderRadius: BorderRadius.circular(8),
+            icon: Icon(Icons.keyboard_arrow_down_rounded,
+                color: textSecondary, size: 18),
             onChanged: (val) {
               if (val != null) {
                 setState(() => _materialFilter = val);
@@ -2036,17 +2484,18 @@ class _HistoryState extends State<PrintHistoryScreen> {
                   children: [
                     Icon(
                       isAll ? Icons.category_outlined : Icons.layers_rounded,
-                      size: 15,
+                      size: 14,
                       color: isAll ? textSecondary : accentPetrol,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 7),
                     Text(
                       isAll ? 'Todos los materiales' : mat,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight:
                             isAll ? FontWeight.normal : FontWeight.w600,
                         color: isAll ? textPrimary : accentPetrol,
+                        fontFamily: '-apple-system',
                       ),
                     ),
                   ],
@@ -2055,14 +2504,130 @@ class _HistoryState extends State<PrintHistoryScreen> {
             }).toList(),
             style: TextStyle(
               color: textPrimary,
-              fontSize: 13,
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
+              fontFamily: '-apple-system',
             ),
           ),
         ),
       );
 
-      // 4. Botón Nueva impresión estilo macOS
+      // 4. Segmented Switcher para cambiar entre Lista y Tarjetas (macOS standard)
+      final viewModeSwitcher = Container(
+        height: 36,
+        padding: const EdgeInsets.all(2.5),
+        decoration: BoxDecoration(
+          color: surfaceElevated,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: borderSubtle),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Tooltip(
+              message: 'Vista de lista (macOS)',
+              child: InkWell(
+                onTap: () {
+                  if (_isCardView) setState(() => _isCardView = false);
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: !_isCardView ? surfaceCard : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: !_isCardView
+                        ? [
+                            BoxShadow(
+                              color: Colors.black
+                                  .withValues(alpha: isVoxelDarkMode ? 0.2 : 0.06),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.view_agenda_outlined,
+                        size: 15,
+                        color: !_isCardView ? accentPetrol : textSecondary,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Lista',
+                        style: TextStyle(
+                          color: !_isCardView ? textPrimary : textSecondary,
+                          fontSize: 12,
+                          fontWeight:
+                              !_isCardView ? FontWeight.w600 : FontWeight.w500,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 2),
+            Tooltip(
+              message: 'Vista de tarjetas (macOS)',
+              child: InkWell(
+                onTap: () {
+                  if (!_isCardView) setState(() => _isCardView = true);
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _isCardView ? surfaceCard : Colors.transparent,
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: _isCardView
+                        ? [
+                            BoxShadow(
+                              color: Colors.black
+                                  .withValues(alpha: isVoxelDarkMode ? 0.2 : 0.06),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
+                            ),
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.grid_view_rounded,
+                        size: 15,
+                        color: _isCardView ? accentPetrol : textSecondary,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Tarjetas',
+                        style: TextStyle(
+                          color: _isCardView ? textPrimary : textSecondary,
+                          fontSize: 12,
+                          fontWeight:
+                              _isCardView ? FontWeight.w600 : FontWeight.w500,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      // 5. Botón Nueva impresión estilo macOS
       final newPrintBtn = ElevatedButton.icon(
         onPressed: () => Navigator.push(
           context,
@@ -2070,14 +2635,15 @@ class _HistoryState extends State<PrintHistoryScreen> {
             builder: (_) => PrintFormScreen(vm: vm, inventoryVm: inventoryVm),
           ),
         ),
-        icon: const Icon(Icons.add_rounded, size: 20, color: Colors.white),
+        icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
         label: const Text(
           'Nueva impresión',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             letterSpacing: -0.1,
+            fontFamily: '-apple-system',
           ),
         ),
         style: ElevatedButton.styleFrom(
@@ -2085,10 +2651,10 @@ class _HistoryState extends State<PrintHistoryScreen> {
           foregroundColor: Colors.white,
           elevation: 0,
           shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-          minimumSize: const Size(0, 42),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+          minimumSize: const Size(0, 36),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(8),
           ),
         ),
       );
@@ -2100,18 +2666,20 @@ class _HistoryState extends State<PrintHistoryScreen> {
             Row(
               children: [
                 Expanded(child: searchField),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 newPrintBtn,
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
                   periodSelector,
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   materialSelector,
+                  const SizedBox(width: 8),
+                  viewModeSwitcher,
                 ],
               ),
             ),
@@ -2121,11 +2689,13 @@ class _HistoryState extends State<PrintHistoryScreen> {
         return Row(
           children: [
             Expanded(child: searchField),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             periodSelector,
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             materialSelector,
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
+            viewModeSwitcher,
+            const SizedBox(width: 10),
             newPrintBtn,
           ],
         );
@@ -2133,27 +2703,187 @@ class _HistoryState extends State<PrintHistoryScreen> {
     });
   }
 
-  Widget _tableHeader(bool isNarrow, [int count = 0]) {
-    final pLabel = _getPeriodLabel();
-    final matLabel = _materialFilter != 'TODOS' ? ' • $_materialFilter' : '';
-    final countLabel = count > 0 ? ' ($count)' : '';
+  Widget _statsBar(int count, double totalGrams, {bool isNarrow = false}) {
+    final gramsStr = totalGrams % 1 == 0
+        ? '${totalGrams.toInt()} g'
+        : '${totalGrams.toStringAsFixed(1)} g';
 
     if (isNarrow) {
       return Container(
-        color: isVoxelDarkMode
-            ? surfaceElevated.withValues(alpha: 0.6)
-            : const Color(0xFFF9FAFB),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: surfaceCard,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: borderSubtle),
+        ),
+        child: Wrap(
+          spacing: 14,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.layers_outlined, size: 14, color: accentPetrol),
+                const SizedBox(width: 5),
+                Text(
+                  '$count ${count == 1 ? 'impresión' : 'impresiones'}',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: '-apple-system',
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.scale_outlined, size: 14, color: accentPetrol),
+                const SizedBox(width: 5),
+                Text(
+                  '$gramsStr consumidos',
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: '-apple-system',
+                  ),
+                ),
+              ],
+            ),
+            if (_materialFilter != 'TODOS')
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: accentPetrol.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: accentPetrol.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _materialFilter,
+                      style: const TextStyle(
+                        color: accentPetrol,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 3),
+                    InkWell(
+                      onTap: () => setState(() => _materialFilter = 'TODOS'),
+                      borderRadius: BorderRadius.circular(4),
+                      child: const Icon(Icons.close_rounded,
+                          size: 12, color: accentPetrol),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7.5),
+      decoration: BoxDecoration(
+        color: surfaceCard,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderSubtle),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.layers_outlined, size: 14, color: accentPetrol),
+          const SizedBox(width: 6),
+          Text(
+            '$count ${count == 1 ? 'impresión registrada' : 'impresiones registradas'}',
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              fontFamily: '-apple-system',
+            ),
+          ),
+          const SizedBox(width: 18),
+          const Icon(Icons.scale_outlined, size: 14, color: accentPetrol),
+          const SizedBox(width: 6),
+          Text(
+            '$gramsStr consumo total',
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              fontFamily: '-apple-system',
+            ),
+          ),
+          if (_materialFilter != 'TODOS') ...[
+            const SizedBox(width: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+              decoration: BoxDecoration(
+                color: accentPetrol.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: accentPetrol.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Filtro: $_materialFilter',
+                    style: const TextStyle(
+                      color: accentPetrol,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: () => setState(() => _materialFilter = 'TODOS'),
+                    borderRadius: BorderRadius.circular(4),
+                    child: const Icon(Icons.close_rounded,
+                        size: 13, color: accentPetrol),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const Spacer(),
+          if (count > 0)
+            Text(
+              'Promedio: ${(totalGrams / count).toStringAsFixed(1)} g / impresión',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                fontFamily: '-apple-system',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tableHeader(bool isNarrow, [int count = 0]) {
+    if (isNarrow) {
+      return Container(
+        color: surfaceElevated.withValues(alpha: 0.45),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         child: Row(
           children: [
             Expanded(
               child: Text(
-                'PIEZAS REGISTRADAS$countLabel • $pLabel$matLabel',
+                'PIEZA Y ARCHIVO ($count)',
                 style: TextStyle(
-                  color: textMuted,
-                  fontSize: 11.5,
+                  color: textSecondary,
+                  fontSize: 10.5,
                   fontWeight: FontWeight.w700,
-                  letterSpacing: 0.7,
+                  letterSpacing: 0.5,
+                  fontFamily: '-apple-system',
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -2161,82 +2891,97 @@ class _HistoryState extends State<PrintHistoryScreen> {
             ),
             const SizedBox(width: 8),
             Text(
-              'FILAMENTO',
+              'CONSUMO',
               style: TextStyle(
-                color: textMuted,
-                fontSize: 11.5,
+                color: textSecondary,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.7,
+                letterSpacing: 0.5,
+                fontFamily: '-apple-system',
               ),
             ),
-            const SizedBox(width: 42),
+            const SizedBox(width: 36),
           ],
         ),
       );
     }
 
     return Container(
-      color: isVoxelDarkMode
-          ? surfaceElevated.withValues(alpha: 0.6)
-          : const Color(0xFFF9FAFB),
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
+      color: surfaceElevated.withValues(alpha: 0.45),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
       child: Row(
         children: [
           Expanded(
             flex: 4,
             child: Text(
-              'PIEZA Y PROYECTO$countLabel • $pLabel$matLabel',
+              'PIEZA Y ARCHIVO',
               style: TextStyle(
-                color: textMuted,
-                fontSize: 11.5,
+                color: textSecondary,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.7,
+                letterSpacing: 0.5,
+                fontFamily: '-apple-system',
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             flex: 3,
             child: Text(
               'SOLICITANTE',
               style: TextStyle(
-                color: textMuted,
-                fontSize: 11.5,
+                color: textSecondary,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.7,
+                letterSpacing: 0.5,
+                fontFamily: '-apple-system',
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             flex: 3,
             child: Text(
               'MATERIAL E IMPRESORA',
               style: TextStyle(
-                color: textMuted,
-                fontSize: 11.5,
+                color: textSecondary,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.7,
+                letterSpacing: 0.5,
+                fontFamily: '-apple-system',
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           SizedBox(
-            width: 90,
+            width: 85,
             child: Text(
-              'FILAMENTO',
+              'FECHA',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                fontFamily: '-apple-system',
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          SizedBox(
+            width: 85,
+            child: Text(
+              'CONSUMO',
               textAlign: TextAlign.right,
               style: TextStyle(
-                color: textMuted,
-                fontSize: 11.5,
+                color: textSecondary,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.7,
+                letterSpacing: 0.5,
+                fontFamily: '-apple-system',
               ),
             ),
           ),
-          const SizedBox(width: 42),
+          const SizedBox(width: 36),
         ],
       ),
     );
@@ -2349,7 +3094,7 @@ class _HistoryState extends State<PrintHistoryScreen> {
                     final message = !returnToStock
                         ? 'Registro eliminado'
                         : restoredGrams == 0
-                            ? 'Registro eliminado; no había bobinas coincidentes para devolver el filamento'
+                            ? 'Registro eliminado; no había carretes coincidentes para devolver el filamento'
                             : 'Registro eliminado y ${restoredGrams.toStringAsFixed(1)} g devueltos al inventario';
                     toast(context, message);
                   }
@@ -2562,10 +3307,10 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
       ),
     );
 
-    final baseRowColor = isVoxelDarkMode ? surfaceCard : Colors.white;
+    final baseRowColor = surfaceCard;
     final hoverRowColor = isVoxelDarkMode
-        ? const Color(0xFF232834)
-        : const Color(0xFFF3F5F8);
+        ? const Color(0xFF1A1A1E)
+        : surfaceElevated;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
@@ -2573,7 +3318,7 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 100),
         padding: EdgeInsets.symmetric(
-          horizontal: widget.isNarrow ? 16 : 20,
+          horizontal: widget.isNarrow ? 16 : 18,
           vertical: widget.isNarrow ? 12 : 11,
         ),
         color: _isHovered ? hoverRowColor : baseRowColor,
@@ -2618,260 +3363,269 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
     String unitGramsStr,
     Widget optionsMenu,
   ) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // 1. Columna: PIEZA Y PROYECTO
-        Expanded(
-          flex: 4,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      mainTitle,
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.2,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (isMultiQty) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: accentPetrol.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(
-                          color: accentPetrol.withValues(alpha: 0.25),
-                          width: 0.8,
+    final swatchColor = primaryColor.color;
+    final isSwatchTooLight = swatchColor.computeLuminance() > 0.85;
+
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PrintFormScreen(
+              vm: widget.vm,
+              inventoryVm: widget.inventoryVm,
+              record: r,
+            ),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // 1. Columna: PIEZA Y ARCHIVO
+            Expanded(
+              flex: 4,
+              child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                mainTitle,
+                                style: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -0.2,
+                                  fontFamily: '-apple-system',
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (isMultiQty) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: accentPetrol.withValues(alpha: 0.10),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: accentPetrol.withValues(alpha: 0.25),
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Text(
+                                  '× ${r.cantidad}',
+                                  style: const TextStyle(
+                                    color: accentPetrol,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ),
-                      child: Text(
-                        '× ${r.cantidad}',
-                        style: const TextStyle(
-                          color: accentPetrol,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: surfaceElevated,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: borderSubtle),
+                              ),
+                              child: Text(
+                                r.figureCategory.trim().isNotEmpty
+                                    ? r.figureCategory.trim()
+                                    : 'Pieza 3D',
+                                style: TextStyle(
+                                  color: textSecondary,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            if (subtitleFileName != null &&
+                                subtitleFileName.trim().isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Flexible(
+                                child: Text(
+                                  subtitleFileName,
+                                  style: TextStyle(
+                                    color: textSecondary,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 3),
-              Row(
-                children: [
-                  if (subtitleFileName != null &&
-                      subtitleFileName.trim().isNotEmpty) ...[
-                    Flexible(
-                      child: Text(
-                        subtitleFileName,
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w400,
+            ),
+            const SizedBox(width: 14),
+
+            // 2. Columna: SOLICITANTE
+            Expanded(
+              flex: 3,
+              child: (r.requesterName ?? '').trim().isNotEmpty
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          r.requesterName!.trim(),
+                          style: TextStyle(
+                            color: textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.1,
+                            fontFamily: '-apple-system',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    Text(
-                      ' • ',
-                      style: TextStyle(color: textMuted, fontSize: 12),
-                    ),
-                  ],
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: surfaceElevated,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: borderSubtle),
-                    ),
-                    child: Text(
-                      r.figureCategory.trim().isNotEmpty
-                          ? r.figureCategory.trim()
-                          : 'Pieza 3D',
+                        const SizedBox(height: 2),
+                        Text(
+                          '${r.requesterType ?? 'Solicitante'}${r.requesterId != null && r.requesterId!.isNotEmpty ? ' • ${r.requesterId}' : ''}',
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w400,
+                            fontFamily: '-apple-system',
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    )
+                  : Text(
+                      'Sin solicitante',
                       style: TextStyle(
                         color: textMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
+            ),
+            const SizedBox(width: 14),
+
+            // 3. Columna: MATERIAL E IMPRESORA
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildMaterialSubtitle(distinctMaterials),
+                  const SizedBox(height: 2.5),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          (r.printerName ?? '').trim().isNotEmpty
+                              ? r.printerName!
+                              : 'Estándar',
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if ((r.printTime ?? '').trim().isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4.5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: surfaceElevated,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: borderSubtle),
+                          ),
+                          child: Text(
+                            '⏱ ${r.printTime}',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
+            ),
+            const SizedBox(width: 14),
 
-        // 2. Columna: SOLICITANTE
-        Expanded(
-          flex: 3,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if ((r.requesterName ?? '').trim().isNotEmpty) ...[
-                Row(
-                  children: [
-                    Icon(
-                      Icons.person_outline_rounded,
-                      size: 15,
-                      color: accentPetrol.withValues(alpha: 0.8),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        r.requesterName!.trim(),
-                        style: TextStyle(
-                          color: textPrimary,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.1,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+            // 4. Columna: FECHA
+            SizedBox(
+              width: 85,
+              child: Text(
+                _HistoryState.formatShortDate(r.date),
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  fontFamily: '-apple-system',
                 ),
-                const SizedBox(height: 3),
-                Padding(
-                  padding: const EdgeInsets.only(left: 21),
-                  child: Text(
-                    '${r.requesterType ?? 'Solicitante'}${r.requesterId != null && r.requesterId!.isNotEmpty ? ' • ${r.requesterId}' : ''}',
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ] else ...[
-                Text(
-                  'Sin solicitante',
-                  style: TextStyle(
-                    color: textMuted,
-                    fontSize: 12.5,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
+              ),
+            ),
+            const SizedBox(width: 14),
 
-        // 3. Columna: MATERIAL E IMPRESORA
-        Expanded(
-          flex: 3,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildMaterialSubtitle(distinctMaterials),
-              const SizedBox(height: 3),
-              Row(
+            // 5. Columna: CONSUMO
+            SizedBox(
+              width: 85,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Flexible(
-                    child: Text(
-                      (r.printerName ?? '').trim().isNotEmpty
-                          ? r.printerName!
-                          : 'Estándar',
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    totalGramsStr,
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                      fontFamily: '-apple-system',
                     ),
                   ),
+                  const SizedBox(height: 1),
                   Text(
-                    ' • ',
-                    style: TextStyle(color: textMuted, fontSize: 12),
-                  ),
-                  Text(
-                    dateStr,
+                    isMultiQty ? unitGramsStr : 'total',
                     style: TextStyle(
                       color: textMuted,
-                      fontSize: 12,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                  if ((r.printTime ?? '').trim().isNotEmpty) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: surfaceElevated,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: borderSubtle),
-                      ),
-                      child: Text(
-                        '⏱ ${r.printTime}',
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 16),
+            ),
+            const SizedBox(width: 6),
 
-        // 4. Columna: FILAMENTO
-        SizedBox(
-          width: 90,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                totalGramsStr,
-                style: TextStyle(
-                  color: textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                isMultiQty ? unitGramsStr : 'total',
-                style: TextStyle(
-                  color: textMuted,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
+            // 6. Columna: OPCIONES
+            optionsMenu,
+          ],
         ),
-        const SizedBox(width: 10),
-
-        // 5. Columna: OPCIONES
-        optionsMenu,
-      ],
+      ),
     );
   }
 
@@ -2993,21 +3747,13 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
                   borderRadius: BorderRadius.circular(5),
                   border: Border.all(color: borderSubtle),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.person_outline_rounded,
-                        size: 13, color: accentPetrol),
-                    const SizedBox(width: 4),
-                    Text(
-                      r.requesterName!.trim(),
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  r.requesterName!.trim(),
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             Container(
@@ -3131,6 +3877,406 @@ class _PrintRecordRowState extends State<_PrintRecordRow> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PrintRecordCard extends StatefulWidget {
+  final PrintRecord record;
+  final PrintViewModel vm;
+  final InventoryViewModel inventoryVm;
+  final void Function(PrintRecord record) onDelete;
+
+  const _PrintRecordCard({
+    super.key,
+    required this.record,
+    required this.vm,
+    required this.inventoryVm,
+    required this.onDelete,
+  });
+
+  @override
+  State<_PrintRecordCard> createState() => _PrintRecordCardState();
+}
+
+class _PrintRecordCardState extends State<_PrintRecordCard> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.record;
+    final List<_MaterialColorEntry> distinctMaterials = [];
+    final Set<String> seenKeys = {};
+
+    for (final m in r.materials) {
+      final vColor = findVoxelColor(value: m.color, name: m.colorName);
+      final colorName = (m.colorName != null && m.colorName!.trim().isNotEmpty)
+          ? m.colorName!.trim()
+          : vColor.name;
+      final fullName = '${m.type} $colorName'.trim();
+      final key = '${m.type.trim().toUpperCase()}_${vColor.value}_$colorName';
+
+      if (!seenKeys.contains(key)) {
+        seenKeys.add(key);
+        distinctMaterials.add(_MaterialColorEntry(
+          type: m.type,
+          voxelColor: vColor,
+          fullName: fullName,
+        ));
+      }
+    }
+
+    if (distinctMaterials.isEmpty) {
+      final fallback = findVoxelColor(hex: '#888887');
+      distinctMaterials.add(_MaterialColorEntry(
+        type: 'Material',
+        voxelColor: fallback,
+        fullName: 'Material',
+      ));
+    }
+
+    final primaryColor = distinctMaterials.first.voxelColor;
+    final swatchColor = primaryColor.color;
+    final isSwatchTooLight = swatchColor.computeLuminance() > 0.85;
+    final isMultiQty = r.cantidad > 1;
+
+    final hasProjectName = (r.projectName ?? '').trim().isNotEmpty;
+    final mainTitle = hasProjectName ? r.projectName!.trim() : r.pieceType;
+    final subtitleFileName =
+        (hasProjectName && r.pieceType.trim() != r.projectName!.trim())
+            ? r.pieceType
+            : null;
+
+    final totalGramsStr = r.totalGrams % 1 == 0
+        ? '${r.totalGrams.toInt()} g'
+        : '${r.totalGrams.toStringAsFixed(1)} g';
+
+    final unitGramsStr = r.unitGrams % 1 == 0
+        ? '${r.unitGrams.toInt()} g c/u'
+        : '${r.unitGrams.toStringAsFixed(1)} g c/u';
+
+    final optionsMenu = SizedBox(
+      width: 28,
+      height: 28,
+      child: PopupMenuButton<String>(
+        tooltip: 'Opciones',
+        color: surfaceCard,
+        elevation: 8,
+        padding: EdgeInsets.zero,
+        icon: Icon(
+          Icons.more_horiz_rounded,
+          size: 18,
+          color: _isHovered ? textPrimary : textMuted,
+        ),
+        constraints: const BoxConstraints(minWidth: 130),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: borderSubtle),
+        ),
+        onSelected: (val) {
+          if (val == 'edit') {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PrintFormScreen(
+                  vm: widget.vm,
+                  inventoryVm: widget.inventoryVm,
+                  record: r,
+                ),
+              ),
+            );
+          } else if (val == 'delete') {
+            widget.onDelete(r);
+          }
+        },
+        itemBuilder: (ctx) => [
+          PopupMenuItem(
+            value: 'edit',
+            height: 36,
+            child: Row(
+              children: [
+                Icon(Icons.edit_outlined, size: 15, color: textPrimary),
+                const SizedBox(width: 8),
+                Text('Editar',
+                    style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 12.5,
+                        fontFamily: '-apple-system')),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(height: 1),
+          PopupMenuItem(
+            value: 'delete',
+            height: 36,
+            child: Row(
+              children: [
+                const Icon(Icons.delete_outline, size: 15, color: semanticDanger),
+                const SizedBox(width: 8),
+                const Text('Eliminar',
+                    style: TextStyle(
+                        color: semanticDanger,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        fontFamily: '-apple-system')),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => PrintFormScreen(
+                vm: widget.vm,
+                inventoryVm: widget.inventoryVm,
+                record: r,
+              ),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: surfaceCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _isHovered
+                  ? accentPetrol.withValues(alpha: 0.35)
+                  : borderSubtle,
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(
+                    alpha: isVoxelDarkMode
+                        ? (_isHovered ? 0.35 : 0.2)
+                        : (_isHovered ? 0.08 : 0.03)),
+                blurRadius: _isHovered ? 12 : 6,
+                offset: Offset(0, _isHovered ? 4 : 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header de tarjeta
+              Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: surfaceElevated,
+                      borderRadius: BorderRadius.circular(5),
+                      border: Border.all(color: borderSubtle),
+                    ),
+                    child: Text(
+                      r.figureCategory.trim().isNotEmpty
+                          ? r.figureCategory.trim()
+                          : 'Pieza 3D',
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        fontFamily: '-apple-system',
+                      ),
+                    ),
+                  ),
+                  if (isMultiQty) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: accentPetrol.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '× ${r.cantidad}',
+                        style: const TextStyle(
+                          color: accentPetrol,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  optionsMenu,
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Título de la pieza
+              Text(
+                mainTitle,
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                  fontFamily: '-apple-system',
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (subtitleFileName != null &&
+                  subtitleFileName.trim().isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitleFileName,
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 11.5,
+                    fontFamily: '-apple-system',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              const SizedBox(height: 10),
+
+              Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: borderSubtle.withValues(alpha: 0.6)),
+              const SizedBox(height: 10),
+
+              // Solicitante
+              if ((r.requesterName ?? '').trim().isNotEmpty) ...[
+                Text(
+                  r.requesterName!.trim(),
+                  style: TextStyle(
+                    color: textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    fontFamily: '-apple-system',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+              ],
+
+              // Material & Impresora
+              Row(
+                children: [
+                  colorSwatchCircle(
+                    primaryColor.color,
+                    size: 8,
+                    isTransparent: primaryColor.isTransparent,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      distinctMaterials.first.fullName,
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w500,
+                        fontFamily: '-apple-system',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text('•', style: TextStyle(color: textMuted, fontSize: 11)),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      (r.printerName ?? '').trim().isNotEmpty
+                          ? r.printerName!
+                          : 'Estándar',
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: 11.5,
+                        fontFamily: '-apple-system',
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+
+              // Footer: Fecha y Gramos
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        _HistoryState.formatShortDate(r.date),
+                        style: TextStyle(
+                          color: textMuted,
+                          fontSize: 11.5,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                      if ((r.printTime ?? '').trim().isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4.5, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: surfaceElevated,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '⏱ ${r.printTime}',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        totalGramsStr,
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                      if (isMultiQty)
+                        Text(
+                          unitGramsStr,
+                          style: TextStyle(
+                            color: textMuted,
+                            fontSize: 10,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4726,7 +5872,7 @@ class _FormState extends State<PrintFormScreen> {
               style: TextStyle(color: textPrimary, fontSize: 12),
               iconEnabledColor: textSecondary,
               decoration: fieldDecoration(
-                'Bobina del inventario (opcional)',
+                'Carrete del inventario (opcional)',
                 hint: 'Seleccionar carrete existente...',
                 prefix:
                     Icon(Icons.tune_outlined, size: 15, color: accentPetrol),
@@ -5726,18 +6872,18 @@ class _AnalyticsState extends State<AnalyticsScreen> {
   Color get cardBg => surfaceCard;
   Color get cardBorderColor => borderSubtle;
   Color get textPrimary => isVoxelDarkMode
-      ? const Color(0xFFF1F3F6)
+      ? const Color(0xFFF4F4F5)
       : const Color(0xFF1D1D1F);
   Color get textSecondary => isVoxelDarkMode
-      ? const Color(0xFFA7AFBD)
+      ? const Color(0xFFA1A1AA)
       : const Color(0xFF7A7A7A);
   Color get surfaceWindow => bgBase;
   Color get dividerColor => borderSubtle;
   Color get segmentedBg => _isDarkMode
-      ? const Color(0xFF242832)
+      ? const Color(0xFF1E1E22)
       : const Color(0xFFEBEBF0);
   Color get segmentedActiveBg => _isDarkMode
-      ? const Color(0xFF1B1E25)
+      ? const Color(0xFF28282D)
       : const Color(0xFFFFFFFF);
 
   @override
@@ -6613,7 +7759,7 @@ class _AnalyticsState extends State<AnalyticsScreen> {
           child: _kpiCard(
             title: 'MATERIAL CONSUMIDO',
             value: gramsStr,
-            subtitle: 'en $recordCount impresiones (${spoolsUsed.toStringAsFixed(2)} bobinas)',
+            subtitle: 'en $recordCount impresiones (${spoolsUsed.toStringAsFixed(2)} carretes)',
             icon: Icons.grain_rounded,
             accentTint: const Color(0xFF0071E3),
           ),
@@ -8891,7 +10037,7 @@ class _ExportState extends State<ExportScreen> {
     final bytes = await pdf.save();
     final cleanPeriod = period.toLowerCase().replaceAll(' ', '_');
     final fileName =
-        'voxelcost3d_${cleanPeriod}_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        'silm_${cleanPeriod}_${DateTime.now().millisecondsSinceEpoch}.pdf';
     await _saveBytes(bytes, fileName, 'application/pdf', 'pdf');
   }
 
@@ -8908,8 +10054,9 @@ class _ExportState extends State<ExportScreen> {
     }
 
     try {
-      final templateData = await rootBundle.load('assets/cmi_template.xlsx');
-      final templateBytes = templateData.buffer.asUint8List();
+      await InstitutionalSettings.instance.load();
+      final templateBytes =
+          await InstitutionalSettings.instance.getExcelTemplateBytes();
       excel = excel_pkg.Excel.decodeBytes(templateBytes);
       if (excel.tables.isNotEmpty) {
         final origSheet = excel.tables.keys.first;
@@ -8948,8 +10095,10 @@ class _ExportState extends State<ExportScreen> {
 
     // Encabezados institucionales B5 y B6 (en negrita)
     final cellB5 = sheet.cell(excel_pkg.CellIndex.indexByString('B5'));
-    cellB5.value =
-        excel_pkg.TextCellValue('Departamento de Ingeniería Industrial');
+    cellB5.value = excel_pkg.TextCellValue(
+        InstitutionalSettings.instance.department.isNotEmpty
+            ? InstitutionalSettings.instance.department
+            : 'Departamento de Ingeniería Industrial');
     cellB5.cellStyle = (cellB5.cellStyle ?? excel_pkg.CellStyle()).copyWith(
       boldVal: true,
       fontSizeVal: 12,
@@ -9162,7 +10311,7 @@ class _ExportState extends State<ExportScreen> {
         margin: const pw.EdgeInsets.all(24),
         build: (pw.Context context) => [
           pw.Text(
-            'VOXELCOST3D - INVENTARIO DE MATERIALES',
+            'SILM - INVENTARIO DE MATERIALES',
             style: pw.TextStyle(
               fontSize: 16,
               fontWeight: pw.FontWeight.bold,
@@ -9196,7 +10345,7 @@ class _ExportState extends State<ExportScreen> {
 
     final bytes = await pdf.save();
     final fileName =
-        'voxelcost3d_inventario_${DateTime.now().millisecondsSinceEpoch}.pdf';
+        'silm_inventario_${DateTime.now().millisecondsSinceEpoch}.pdf';
     await _saveBytes(bytes, fileName, 'application/pdf', 'pdf');
   }
 
@@ -9220,7 +10369,7 @@ class _ExportState extends State<ExportScreen> {
     }
 
     final fileName =
-        'voxelcost3d_inventario_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        'silm_inventario_${DateTime.now().millisecondsSinceEpoch}.xlsx';
     await _saveBytes(
         bytes,
         fileName,
@@ -9411,9 +10560,19 @@ class _ExportState extends State<ExportScreen> {
     if (result != true) return;
 
     try {
+      await InstitutionalSettings.instance.load();
+      final inst = InstitutionalSettings.instance;
       final config = WordInventoryReportConfig(
         date: selectedDate,
         oficioNo: oficioController.text.trim(),
+        directorName: inst.directorName,
+        directorRole: inst.directorRole,
+        encargadoName: inst.encargadoName,
+        encargadoRole: inst.encargadoRole,
+        remitenteName: inst.remitenteName,
+        remitenteRole: inst.remitenteRole,
+        ccp1: inst.ccp1,
+        ccp2: inst.ccp2,
       );
       final bytes = await WordInventoryExporter.generateDocx(
         items: _availableInventory,
@@ -9457,10 +10616,10 @@ class _ExportState extends State<ExportScreen> {
         final pLabel = _getPeriodLabel();
         if (format == 'PDF') {
           await _savePdf(rows, _availablePrints,
-              'VOXELCOST3D - REPORTE DE PRODUCCIÓN ($pLabel)');
+              'SILM - REPORTE DE PRODUCCIÓN ($pLabel)');
         } else {
           await _saveExcel(rows, _availablePrints,
-              'VOXELCOST3D - REPORTE DE PRODUCCIÓN ($pLabel)');
+              'SILM - REPORTE DE PRODUCCIÓN ($pLabel)');
         }
       } else {
         final rows = _availableInventory
@@ -10691,8 +11850,1041 @@ class _ExportState extends State<ExportScreen> {
 }
 
 // ==========================================
-// 7. INVENTARIO DE MATERIALES
+// 7. INVENTARIO DE CARRETES (ESTÉTICA MACOS)
 // ==========================================
+
+Widget _buildInventoryStatusPill({
+  required bool isEnUso,
+  required bool isSellado,
+  required bool isLow,
+  required bool isDepleted,
+  required bool isDarkMode,
+}) {
+  Color bg;
+  Color border;
+  Color text;
+  String label;
+
+  if (isDepleted) {
+    label = 'Agotado';
+    bg = isDarkMode
+        ? const Color(0xFFEF4444).withValues(alpha: 0.16)
+        : const Color(0xFFFEE2E2);
+    border = isDarkMode
+        ? const Color(0xFFEF4444).withValues(alpha: 0.32)
+        : const Color(0xFFFECACA);
+    text = isDarkMode
+        ? const Color(0xFFF87171)
+        : const Color(0xFFDC2626);
+  } else if (isLow) {
+    label = 'Bajo stock';
+    bg = isDarkMode
+        ? const Color(0xFFF97316).withValues(alpha: 0.16)
+        : const Color(0xFFFFEDD5);
+    border = isDarkMode
+        ? const Color(0xFFF97316).withValues(alpha: 0.32)
+        : const Color(0xFFFED7AA);
+    text = isDarkMode
+        ? const Color(0xFFFB923C)
+        : const Color(0xFFEA580C);
+  } else if (isEnUso) {
+    label = 'En uso';
+    bg = isDarkMode
+        ? const Color(0xFFF59E0B).withValues(alpha: 0.16)
+        : const Color(0xFFFEF3C7);
+    border = isDarkMode
+        ? const Color(0xFFF59E0B).withValues(alpha: 0.32)
+        : const Color(0xFFFDE68A);
+    text = isDarkMode
+        ? const Color(0xFFFBBF24)
+        : const Color(0xFFD97706);
+  } else {
+    label = 'Sellado';
+    bg = isDarkMode
+        ? const Color(0xFF10B981).withValues(alpha: 0.16)
+        : const Color(0xFFD1FAE5);
+    border = isDarkMode
+        ? const Color(0xFF10B981).withValues(alpha: 0.32)
+        : const Color(0xFFA7F3D0);
+    text = isDarkMode
+        ? const Color(0xFF34D399)
+        : const Color(0xFF059669);
+  }
+
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+    decoration: BoxDecoration(
+      color: bg,
+      borderRadius: BorderRadius.circular(100),
+      border: Border.all(color: border),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 5.5,
+          height: 5.5,
+          decoration: BoxDecoration(
+            color: text,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          label,
+          style: TextStyle(
+            color: text,
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            fontFamily: '-apple-system',
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+
+class _SpoolVectorIconPainter extends CustomPainter {
+  final Color filamentColor;
+  final bool isDepleted;
+  final bool isDarkMode;
+
+  _SpoolVectorIconPainter({
+    required this.filamentColor,
+    required this.isDepleted,
+    required this.isDarkMode,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final effectiveColor = isDepleted ? Colors.grey : filamentColor;
+    final isLightFilament = effectiveColor.computeLuminance() > 0.75;
+
+    // Escala normalizada diseñada en base a 26x26
+    final scale = size.width / 26.0;
+    canvas.save();
+    canvas.scale(scale);
+
+    // 1. Pestaña posterior (Back Flange)
+    final backFlangeRect = Rect.fromCenter(
+      center: const Offset(17.2, 13.0),
+      width: 5.6,
+      height: 18.4,
+    );
+    final backFlangePaint = Paint()
+      ..isAntiAlias = true
+      ..color = isDarkMode ? const Color(0xFF26262B) : const Color(0xFFCBD5E1)
+      ..style = PaintingStyle.fill;
+    canvas.drawOval(backFlangeRect, backFlangePaint);
+
+    final backFlangeStroke = Paint()
+      ..isAntiAlias = true
+      ..color = isDarkMode ? const Color(0xFF38383F) : const Color(0xFF94A3B8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawOval(backFlangeRect, backFlangeStroke);
+
+    // 2. Bobina cilíndrica de filamento (Filament Core)
+    final filamentPath = Path();
+    filamentPath.moveTo(8.5, 5.8);
+    filamentPath.lineTo(17.2, 5.8);
+    filamentPath.arcTo(
+      Rect.fromCenter(
+          center: const Offset(17.2, 13.0), width: 4.8, height: 14.4),
+      -1.5707963, // -pi/2
+      3.14159265, // pi
+      false,
+    );
+    filamentPath.lineTo(8.5, 20.2);
+    filamentPath.arcTo(
+      Rect.fromCenter(
+          center: const Offset(8.5, 13.0), width: 4.8, height: 14.4),
+      1.5707963, // pi/2
+      3.14159265, // pi
+      false,
+    );
+    filamentPath.close();
+
+    final filPaint = Paint()
+      ..isAntiAlias = true
+      ..color = effectiveColor
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(filamentPath, filPaint);
+
+    // Contorno fino para filamentos muy claros
+    if (isLightFilament) {
+      final filOutline = Paint()
+        ..isAntiAlias = true
+        ..color = Colors.black.withValues(alpha: 0.15)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.8;
+      canvas.drawPath(filamentPath, filOutline);
+    }
+
+    // Textura sutil de vueltas de filamento
+    final coilLinePaint = Paint()
+      ..isAntiAlias = true
+      ..color = (isLightFilament ? Colors.black : Colors.white)
+          .withValues(alpha: 0.14)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.9;
+    canvas.drawLine(
+        const Offset(11.4, 6.2), const Offset(11.4, 19.8), coilLinePaint);
+    canvas.drawLine(
+        const Offset(14.3, 6.2), const Offset(14.3, 19.8), coilLinePaint);
+
+    // 3. Pestaña frontal (Front Flange)
+    final frontFlangeRect = Rect.fromCenter(
+      center: const Offset(8.5, 13.0),
+      width: 5.6,
+      height: 18.4,
+    );
+    final frontFlangePaint = Paint()
+      ..isAntiAlias = true
+      ..color = (isDarkMode
+              ? const Color(0xFF1E1E22)
+              : const Color(0xFFE2E8F0))
+          .withValues(alpha: 0.92)
+      ..style = PaintingStyle.fill;
+    canvas.drawOval(frontFlangeRect, frontFlangePaint);
+
+    final frontFlangeStroke = Paint()
+      ..isAntiAlias = true
+      ..color = isDarkMode ? const Color(0xFF38383F) : const Color(0xFF94A3B8)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    canvas.drawOval(frontFlangeRect, frontFlangeStroke);
+
+    // 4. Orificio central para el eje (Spindle Hole)
+    final holeRect = Rect.fromCenter(
+      center: const Offset(8.5, 13.0),
+      width: 2.4,
+      height: 7.2,
+    );
+    final holePaint = Paint()
+      ..isAntiAlias = true
+      ..color = isDarkMode ? const Color(0xFF0C0D0E) : const Color(0xFF1E293B)
+      ..style = PaintingStyle.fill;
+    canvas.drawOval(holeRect, holePaint);
+
+    // 5. Hebra suelta de filamento saliendo hacia arriba
+    final strandPath = Path();
+    strandPath.moveTo(14.5, 5.8);
+    strandPath.quadraticBezierTo(19.0, 2.5, 24.5, 3.8);
+
+    final strandPaint = Paint()
+      ..isAntiAlias = true
+      ..color = effectiveColor
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 1.4;
+    canvas.drawPath(strandPath, strandPaint);
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _SpoolVectorIconPainter oldDelegate) {
+    return oldDelegate.filamentColor != filamentColor ||
+        oldDelegate.isDepleted != isDepleted ||
+        oldDelegate.isDarkMode != isDarkMode;
+  }
+}
+
+class _SpoolIconWidget extends StatelessWidget {
+  final Color spoolColor;
+  final bool isDepleted;
+  final bool isDarkMode;
+  final double size;
+
+  const _SpoolIconWidget({
+    required this.spoolColor,
+    required this.isDepleted,
+    required this.isDarkMode,
+    this.size = 40,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: isDarkMode
+            ? const Color(0xFF18181B)
+            : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isDarkMode
+              ? const Color(0xFF26262B)
+              : const Color(0xFFE2E8F0),
+          width: 1.0,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha: isDarkMode ? 0.20 : 0.04,
+            ),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
+          ),
+        ],
+      ),
+      child: Center(
+        child: CustomPaint(
+          size: Size(size * 0.65, size * 0.65),
+          painter: _SpoolVectorIconPainter(
+            filamentColor: spoolColor,
+            isDepleted: isDepleted,
+            isDarkMode: isDarkMode,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InventoryGridCardWidget extends StatefulWidget {
+  final InventoryItem item;
+  final VoidCallback onTap;
+  final Function(String) onAction;
+  final bool isDarkMode;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color textMuted;
+  final Color surfaceCard;
+  final Color surfaceElevated;
+  final Color borderSubtle;
+  final Color accentPetrol;
+  final Color semanticDanger;
+
+  const _InventoryGridCardWidget({
+    super.key,
+    required this.item,
+    required this.onTap,
+    required this.onAction,
+    required this.isDarkMode,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.textMuted,
+    required this.surfaceCard,
+    required this.surfaceElevated,
+    required this.borderSubtle,
+    required this.accentPetrol,
+    required this.semanticDanger,
+  });
+
+  @override
+  State<_InventoryGridCardWidget> createState() =>
+      _InventoryGridCardWidgetState();
+}
+
+class _InventoryGridCardWidgetState extends State<_InventoryGridCardWidget> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+    final ratio = item.remainingRatio;
+    final low = item.isLowStock;
+    final depleted = item.isDepleted;
+    final spoolColor = parseHex(item.colorHex);
+    final hasRealBrand =
+        item.brand.trim().isNotEmpty && item.brand.trim() != 'Genérica';
+
+    final List<String> specParts = [];
+    if (hasRealBrand) specParts.add(item.brand.trim());
+    specParts.add('${item.diameter.toStringAsFixed(2)} mm');
+    if (item.tempNozzle != null) specParts.add('${item.tempNozzle}°C');
+    final specSubtitle = specParts.join(' · ');
+
+    final borderColor = depleted
+        ? widget.borderSubtle
+        : (low
+            ? widget.semanticDanger.withValues(alpha: 0.45)
+            : (_isHovered
+                ? widget.accentPetrol.withValues(alpha: 0.5)
+                : (widget.isDarkMode
+                    ? const Color(0xFF26262B)
+                    : const Color(0xFFE5E7EB))));
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(0, _isHovered ? -2.0 : 0, 0),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          decoration: BoxDecoration(
+            color: widget.surfaceCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: borderColor,
+              width: _isHovered ? 1.3 : 1.0,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(
+                  alpha: widget.isDarkMode
+                      ? (_isHovered ? 0.38 : 0.16)
+                      : (_isHovered ? 0.08 : 0.03),
+                ),
+                blurRadius: _isHovered ? 14 : 7,
+                offset: Offset(0, _isHovered ? 4 : 2),
+              ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Icono Carrete de Filamento (Left Column)
+              _SpoolIconWidget(
+                spoolColor: spoolColor,
+                isDepleted: depleted,
+                isDarkMode: widget.isDarkMode,
+                size: 40,
+              ),
+              const SizedBox(width: 14),
+
+              // Contenido Bento (Right Column)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Fila 1 & 2: Cabecera con Material · Color y Marca · Spec
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: RichText(
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                text: TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: item.material.toUpperCase(),
+                                      style: TextStyle(
+                                        color: widget.textPrimary,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: ' · ',
+                                      style: TextStyle(
+                                        color: widget.textMuted,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: item.color,
+                                      style: TextStyle(
+                                        color: widget.textPrimary,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            Material(
+                              color: Colors.transparent,
+                              child: PopupMenuButton<String>(
+                                tooltip: 'Opciones de carrete',
+                                icon: Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: _isHovered
+                                        ? widget.surfaceElevated
+                                        : Colors.transparent,
+                                  ),
+                                  child: Icon(Icons.more_horiz_rounded,
+                                      size: 16, color: widget.textSecondary),
+                                ),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                color: widget.surfaceElevated,
+                                onSelected: widget.onAction,
+                                itemBuilder: (_) => [
+                                  const PopupMenuItem(
+                                    value: 'weigh',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.scale_outlined, size: 15),
+                                        SizedBox(width: 8),
+                                        Text('Ajustar peso / Báscula',
+                                            style: TextStyle(fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'toggle_en_uso',
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          item.isEnUso
+                                              ? Icons.lock_outline
+                                              : Icons.lock_open_outlined,
+                                          size: 15,
+                                          color: widget.textSecondary,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          item.isEnUso
+                                              ? 'Marcar como Sellado'
+                                              : 'Marcar como En Uso',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'edit',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.edit_outlined,
+                                            size: 15,
+                                            color: widget.textSecondary),
+                                        const SizedBox(width: 8),
+                                        const Text('Editar carrete',
+                                            style: TextStyle(fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'copy',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.copy_outlined,
+                                            size: 15,
+                                            color: widget.textSecondary),
+                                        const SizedBox(width: 8),
+                                        const Text('Duplicar carrete',
+                                            style: TextStyle(fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.delete_outline,
+                                            size: 15, color: Colors.redAccent),
+                                        SizedBox(width: 8),
+                                        Text('Eliminar carrete',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.redAccent)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 1.5),
+                        Text(
+                          specSubtitle,
+                          style: TextStyle(
+                            color: widget.textSecondary,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+
+                    // Fila 3 & 4: Peso y Barra de progreso de precisión
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${item.stockActual.toInt()} g',
+                                  style: TextStyle(
+                                    color: low
+                                        ? widget.semanticDanger
+                                        : widget.textPrimary,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  '  de ${item.stockInicial.toInt()} g',
+                                  style: TextStyle(
+                                    color: widget.textMuted,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              '${(ratio * 100).toInt()}%',
+                              style: TextStyle(
+                                color: low
+                                    ? widget.semanticDanger
+                                    : (depleted
+                                        ? widget.textMuted
+                                        : widget.textSecondary),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: Stack(
+                            children: [
+                              Container(
+                                height: 5,
+                                width: double.infinity,
+                                color: widget.isDarkMode
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : Colors.black.withValues(alpha: 0.06),
+                              ),
+                              FractionallySizedBox(
+                                widthFactor: ratio.clamp(0.0, 1.0),
+                                child: Container(
+                                  height: 5,
+                                  decoration: BoxDecoration(
+                                    color: depleted
+                                        ? widget.textMuted
+                                        : (low
+                                            ? widget.semanticDanger
+                                            : (spoolColor.computeLuminance() >
+                                                        0.82 &&
+                                                    !widget.isDarkMode
+                                                ? widget.accentPetrol
+                                                : spoolColor)),
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Fila 5: Badges (Estado Sonoma + Ubicación con Pin)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildInventoryStatusPill(
+                          isEnUso: item.isEnUso,
+                          isSellado: item.isSellado,
+                          isLow: low,
+                          isDepleted: depleted,
+                          isDarkMode: widget.isDarkMode,
+                        ),
+                        if (item.effectiveLocation.trim().isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: widget.surfaceElevated,
+                              borderRadius: BorderRadius.circular(100),
+                              border: Border.all(color: widget.borderSubtle),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.location_on_rounded,
+                                  size: 11,
+                                  color: Color(0xFFEF4444),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  item.effectiveLocation.trim(),
+                                  style: TextStyle(
+                                    color: widget.textSecondary,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else if (item.tempNozzle != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 2.5),
+                            decoration: BoxDecoration(
+                              color: widget.surfaceElevated,
+                              borderRadius: BorderRadius.circular(100),
+                              border: Border.all(color: widget.borderSubtle),
+                            ),
+                            child: Text(
+                              '♨ ${item.tempNozzle}°C',
+                              style: TextStyle(
+                                color: widget.textSecondary,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InventoryTableRowWidget extends StatefulWidget {
+  final InventoryItem item;
+  final Color spoolColor;
+  final double ratio;
+  final bool low;
+  final bool depleted;
+  final bool isDarkMode;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color textMuted;
+  final Color surfaceElevated;
+  final Color accentPetrol;
+  final Color semanticDanger;
+  final VoidCallback onTap;
+  final Function(String) onAction;
+
+  const _InventoryTableRowWidget({
+    super.key,
+    required this.item,
+    required this.spoolColor,
+    required this.ratio,
+    required this.low,
+    required this.depleted,
+    required this.isDarkMode,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.textMuted,
+    required this.surfaceElevated,
+    required this.accentPetrol,
+    required this.semanticDanger,
+    required this.onTap,
+    required this.onAction,
+  });
+
+  @override
+  State<_InventoryTableRowWidget> createState() =>
+      _InventoryTableRowWidgetState();
+}
+
+class _InventoryTableRowWidgetState extends State<_InventoryTableRowWidget> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final item = widget.item;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          color: _isHovered
+              ? widget.surfaceElevated.withValues(alpha: 0.6)
+              : Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: Row(
+            children: [
+              // 1. CARRETE / MATERIAL (con swatch de filamento glow y cápsula de polímero)
+              Expanded(
+                flex: 3,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 15,
+                      height: 15,
+                      decoration: BoxDecoration(
+                        color: widget.spoolColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: widget.spoolColor.computeLuminance() > 0.8
+                              ? Colors.black26
+                              : Colors.transparent,
+                          width: 0.8,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: widget.spoolColor.withValues(alpha: 0.35),
+                            blurRadius: 6,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: widget.accentPetrol.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        item.material.toUpperCase(),
+                        style: TextStyle(
+                          color: widget.accentPetrol,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        item.color,
+                        style: TextStyle(
+                          color: widget.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: '-apple-system',
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 2. MARCA
+              Expanded(
+                flex: 2,
+                child: Text(
+                  item.brand.trim().isNotEmpty && item.brand.trim() != 'Genérica'
+                      ? item.brand
+                      : 'Genérica',
+                  style: TextStyle(
+                    color: item.brand.trim().isNotEmpty &&
+                            item.brand.trim() != 'Genérica'
+                        ? widget.textPrimary
+                        : widget.textMuted,
+                    fontSize: 12,
+                    fontFamily: '-apple-system',
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+
+              // 3. UBICACIÓN
+              Expanded(
+                flex: 2,
+                child: Text(
+                  item.effectiveLocation.trim().isNotEmpty
+                      ? item.effectiveLocation.trim()
+                      : '—',
+                  style: TextStyle(
+                    color: widget.textSecondary,
+                    fontSize: 12,
+                    fontFamily: '-apple-system',
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+
+              // 4. STOCK ACTUAL
+              Expanded(
+                flex: 2,
+                child: Text(
+                  '${item.stockActual.toInt()} g / ${item.stockInicial.toInt()} g',
+                  style: TextStyle(
+                    color: widget.low
+                        ? widget.semanticDanger
+                        : widget.textPrimary,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: '-apple-system',
+                  ),
+                ),
+              ),
+
+              // 5. NIVEL (barra cápsula + %)
+              Expanded(
+                flex: 2,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: widget.ratio.clamp(0.0, 1.0),
+                          minHeight: 5,
+                          backgroundColor: widget.surfaceElevated,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            widget.depleted
+                                ? widget.textMuted
+                                : (widget.low
+                                    ? widget.semanticDanger
+                                    : widget.accentPetrol),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 36,
+                      child: Text(
+                        '${(widget.ratio * 100).toInt()}%',
+                        style: TextStyle(
+                          color: widget.low
+                              ? widget.semanticDanger
+                              : widget.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 6. ESTADO (Pill Badge de Apple)
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _buildInventoryStatusPill(
+                    isEnUso: item.isEnUso,
+                    isSellado: item.isSellado,
+                    isLow: widget.low,
+                    isDepleted: widget.depleted,
+                    isDarkMode: widget.isDarkMode,
+                  ),
+                ),
+              ),
+
+              // 7. ACCIONES
+              SizedBox(
+                width: 40,
+                child: PopupMenuButton<String>(
+                  tooltip: 'Opciones',
+                  icon: Icon(Icons.more_horiz_rounded,
+                      size: 18, color: widget.textSecondary),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  color: widget.surfaceElevated,
+                  onSelected: widget.onAction,
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(
+                      value: 'weigh',
+                      child: Row(
+                        children: [
+                          Icon(Icons.scale_outlined, size: 15),
+                          SizedBox(width: 8),
+                          Text('Ajustar peso / Báscula',
+                              style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'toggle_en_uso',
+                      child: Row(
+                        children: [
+                          Icon(
+                            item.isEnUso
+                                ? Icons.lock_outline
+                                : Icons.lock_open_outlined,
+                            size: 15,
+                            color: widget.textSecondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            item.isEnUso
+                                ? 'Marcar como Sellado'
+                                : 'Marcar como En Uso',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_outlined,
+                              size: 15, color: widget.textSecondary),
+                          const SizedBox(width: 8),
+                          const Text('Editar carrete',
+                              style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: 'copy',
+                      child: Row(
+                        children: [
+                          Icon(Icons.copy_outlined,
+                              size: 15, color: widget.textSecondary),
+                          const SizedBox(width: 8),
+                          const Text('Duplicar carrete',
+                              style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(Icons.delete_outline,
+                              size: 15, color: Colors.redAccent),
+                          SizedBox(width: 8),
+                          Text('Eliminar carrete',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.redAccent)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class InventoryScreen extends StatefulWidget {
   final VoidCallback? onToggleMenu;
   final VoidCallback? onHoverMenu;
@@ -10739,7 +12931,7 @@ class _InventoryState extends State<InventoryScreen> {
   Future<void> _showInventoryWordDialog(BuildContext context) async {
     final items = vm.inventoryItems;
     if (items.isEmpty) {
-      toast(context, 'No hay bobinas en el inventario para generar el reporte',
+      toast(context, 'No hay carretes en el inventario para generar el reporte',
           isError: true);
       return;
     }
@@ -10919,9 +13111,19 @@ class _InventoryState extends State<InventoryScreen> {
     if (result != true) return;
 
     try {
+      await InstitutionalSettings.instance.load();
+      final inst = InstitutionalSettings.instance;
       final config = WordInventoryReportConfig(
         date: selectedDate,
         oficioNo: oficioController.text.trim(),
+        directorName: inst.directorName,
+        directorRole: inst.directorRole,
+        encargadoName: inst.encargadoName,
+        encargadoRole: inst.encargadoRole,
+        remitenteName: inst.remitenteName,
+        remitenteRole: inst.remitenteRole,
+        ccp1: inst.ccp1,
+        ccp2: inst.ccp2,
       );
       final bytes = await WordInventoryExporter.generateDocx(
         items: items,
@@ -10963,11 +13165,10 @@ class _InventoryState extends State<InventoryScreen> {
             }
 
             // Filtro por Estado
-            if (statusFilter == 'Activos' && i.isDepleted) return false;
-            if (statusFilter == 'Bajo' && !i.isLowStock) return false;
-            if (statusFilter == 'Agotados' && !i.isDepleted) return false;
+            if (statusFilter == 'En uso' && !i.isEnUso) return false;
             if (statusFilter == 'Sellado' && !i.isSellado) return false;
-            if (statusFilter == 'EnUso' && !i.isEnUso) return false;
+            if (statusFilter == 'Bajo stock' && !i.isLowStock) return false;
+            if (statusFilter == 'Agotados' && !i.isDepleted) return false;
 
             // Filtro por Material
             if (materialFilter != 'Todos' && i.material != materialFilter) {
@@ -11029,23 +13230,23 @@ class _InventoryState extends State<InventoryScreen> {
                         builder: (_) => AddProductScreen(vm: vm),
                       ),
                     ),
-                    icon: Icon(Icons.add, size: 16, color: textPrimary),
-                    label: Text(
-                      'Nueva Bobina',
+                    icon: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
+                    label: const Text(
+                      'Nuevo Carrete',
                       style: TextStyle(
-                        color: textPrimary,
+                        color: Colors.white,
                         fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 0),
+                          horizontal: 16, vertical: 0),
                       backgroundColor: accentPetrol,
-                      foregroundColor: textPrimary,
+                      foregroundColor: Colors.white,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
@@ -11064,25 +13265,31 @@ class _InventoryState extends State<InventoryScreen> {
                     const SizedBox(height: 10),
                   ],
 
-                  // 2. Barra de Búsqueda y Filtros Rápidos
+                  // Barra de Búsqueda y Filtros Unificada (1 sola fila limpia de 38px)
                   Row(
                     children: [
-                      // Buscador compacto
+                      // Buscador estilo macOS
                       Expanded(
-                        flex: 3,
                         child: SizedBox(
                           height: 38,
                           child: TextField(
                             controller: _searchCtrl,
                             onChanged: (x) => setState(() => search = x),
-                            style: TextStyle(color: textPrimary, fontSize: 13),
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 13,
+                              fontFamily: '-apple-system',
+                            ),
                             decoration: InputDecoration(
                               hintText:
-                                  'Buscar material, color, marca o ubicación...',
-                              hintStyle:
-                                  TextStyle(color: textMuted, fontSize: 12),
+                                  'Buscar por material, color, marca o ubicación...',
+                              hintStyle: TextStyle(
+                                color: textMuted,
+                                fontSize: 12.5,
+                                fontFamily: '-apple-system',
+                              ),
                               prefixIcon: Icon(Icons.search,
-                                  color: textSecondary, size: 17),
+                                  color: textSecondary, size: 16),
                               suffixIcon: search.isNotEmpty
                                   ? IconButton(
                                       icon: Icon(Icons.clear,
@@ -11114,112 +13321,69 @@ class _InventoryState extends State<InventoryScreen> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
 
-                      // Selector de Vista (Cuadrícula / Lista)
+                      // Filtro Material Dropdown
+                      _buildToolbarDropdown(
+                        prefixLabel: 'Material:',
+                        value: materialFilter,
+                        items: availableMaterials,
+                        onChanged: (val) {
+                          if (val != null) setState(() => materialFilter = val);
+                        },
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Filtro Estado Dropdown
+                      _buildToolbarDropdown(
+                        prefixLabel: 'Estado:',
+                        value: statusFilter,
+                        items: const [
+                          'Todos',
+                          'En uso',
+                          'Sellado',
+                          'Bajo stock',
+                          'Agotados'
+                        ],
+                        onChanged: (val) {
+                          if (val != null) setState(() => statusFilter = val);
+                        },
+                      ),
+                      const SizedBox(width: 10),
+
+                      // Selector de Vista estilo Segmented Control de macOS
                       Container(
                         height: 38,
+                        padding: const EdgeInsets.all(3),
                         decoration: BoxDecoration(
-                          color: surfaceCard,
-                          borderRadius: BorderRadius.circular(8),
+                          color: surfaceElevated,
+                          borderRadius: BorderRadius.circular(9),
                           border: Border.all(color: borderSubtle),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(
-                              tooltip: 'Cuadrícula',
-                              visualDensity: VisualDensity.compact,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
-                              icon: Icon(Icons.grid_view_rounded,
-                                  size: 16,
-                                  color: isGridView
-                                      ? accentPetrol
-                                      : textSecondary),
-                              onPressed: () =>
-                                  setState(() => isGridView = true),
+                            _buildViewSegmentButton(
+                              icon: Icons.grid_view_rounded,
+                              tooltip: 'Cuadrícula (Estante)',
+                              isSelected: isGridView,
+                              onTap: () => setState(() => isGridView = true),
                             ),
-                            IconButton(
-                              tooltip: 'Lista',
-                              visualDensity: VisualDensity.compact,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 6),
-                              icon: Icon(Icons.view_list_rounded,
-                                  size: 16,
-                                  color: !isGridView
-                                      ? accentPetrol
-                                      : textSecondary),
-                              onPressed: () =>
-                                  setState(() => isGridView = false),
+                            const SizedBox(width: 2),
+                            _buildViewSegmentButton(
+                              icon: Icons.view_headline_rounded,
+                              tooltip: 'Tabla Técnica',
+                              isSelected: !isGridView,
+                              onTap: () => setState(() => isGridView = false),
                             ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-
-                  // 3. Fila de Filtros de Material y Estado Horizontal
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        ...availableMaterials.map((mat) {
-                          final isSel = materialFilter == mat;
-                          final count = mat == 'Todos'
-                              ? vm.inventoryItems.length
-                              : vm.inventoryItems
-                                  .where((i) => i.material == mat)
-                                  .length;
-                          return _filterChip(
-                            '$mat ($count)',
-                            isSel,
-                            () => setState(() => materialFilter = mat),
-                          );
-                        }),
-                        const SizedBox(width: 6),
-                        Container(
-                          height: 18,
-                          width: 1,
-                          color: borderSubtle,
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                        ),
-                        const SizedBox(width: 6),
-                        _filterChip(
-                          'Todos los estados',
-                          statusFilter == 'Todos',
-                          () => setState(() => statusFilter = 'Todos'),
-                        ),
-                        _filterChip(
-                          'Sellados (${vm.inventoryItems.where((i) => i.isSellado).length})',
-                          statusFilter == 'Sellado',
-                          () => setState(() => statusFilter = 'Sellado'),
-                        ),
-                        _filterChip(
-                          'En uso (${vm.inventoryItems.where((i) => i.isEnUso).length})',
-                          statusFilter == 'EnUso',
-                          () => setState(() => statusFilter = 'EnUso'),
-                        ),
-                        if (vm.lowStockCount > 0)
-                          _filterChip(
-                            'Bajo Stock (${vm.lowStockCount})',
-                            statusFilter == 'Bajo',
-                            () => setState(() => statusFilter = 'Bajo'),
-                            isAlert: true,
-                          ),
-                        if (vm.depletedStockCount > 0)
-                          _filterChip(
-                            'Agotadas (${vm.depletedStockCount})',
-                            statusFilter == 'Agotados',
-                            () => setState(() => statusFilter = 'Agotados'),
-                          ),
-                      ],
-                    ),
-                  ),
                   const SizedBox(height: 14),
 
-                  // 4. Catálogo de Bobinas (Grid o Tabla)
+                  // Catálogo de Carretes (Grid o Tabla)
                   Expanded(
                     child: items.isEmpty
                         ? Center(
@@ -11236,12 +13400,14 @@ class _InventoryState extends State<InventoryScreen> {
                                   search.isNotEmpty ||
                                           statusFilter != 'Todos' ||
                                           materialFilter != 'Todos'
-                                      ? 'No se encontraron bobinas con estos filtros'
-                                      : 'No hay bobinas registradas',
+                                      ? 'No se encontraron carretes con estos filtros'
+                                      : 'No hay carretes registrados',
                                   style: TextStyle(
-                                      color: textSecondary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500),
+                                    color: textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    fontFamily: '-apple-system',
+                                  ),
                                 ),
                               ],
                             ),
@@ -11252,13 +13418,29 @@ class _InventoryState extends State<InventoryScreen> {
                                 gridDelegate:
                                     const SliverGridDelegateWithMaxCrossAxisExtent(
                                   maxCrossAxisExtent: 380,
-                                  mainAxisExtent: 178,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
+                                  mainAxisExtent: 148,
+                                  crossAxisSpacing: 14,
+                                  mainAxisSpacing: 14,
                                 ),
                                 itemCount: items.length,
-                                itemBuilder: (_, index) =>
-                                    _inventoryCard(items[index]),
+                                itemBuilder: (_, index) {
+                                  final item = items[index];
+                                  return _InventoryGridCardWidget(
+                                    item: item,
+                                    onTap: () => _showWeighAndTareDialog(item),
+                                    onAction: (val) =>
+                                        _handleInventoryAction(item, val),
+                                    isDarkMode: isVoxelDarkMode,
+                                    textPrimary: textPrimary,
+                                    textSecondary: textSecondary,
+                                    textMuted: textMuted,
+                                    surfaceCard: surfaceCard,
+                                    surfaceElevated: surfaceElevated,
+                                    borderSubtle: borderSubtle,
+                                    accentPetrol: accentPetrol,
+                                    semanticDanger: semanticDanger,
+                                  );
+                                },
                               )
                             : _inventoryTable(items),
                   ),
@@ -11281,557 +13463,283 @@ class _InventoryState extends State<InventoryScreen> {
             style: const TextStyle(color: semanticDanger, fontSize: 12)),
       );
 
-  Widget _filterChip(String label, bool isSelected, VoidCallback onTap,
-      {bool isAlert = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 6),
+  Widget _buildToolbarDropdown({
+    required String prefixLabel,
+    required String value,
+    required List<String> items,
+    required ValueChanged<String?> onChanged,
+  }) {
+    return Container(
+      height: 38,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: surfaceCard,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderSubtle),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: items.contains(value) ? value : items.first,
+          onChanged: onChanged,
+          dropdownColor: surfaceElevated,
+          icon: Icon(Icons.keyboard_arrow_down_rounded,
+              size: 16, color: textSecondary),
+          style: TextStyle(
+            color: textPrimary,
+            fontSize: 12,
+            fontFamily: '-apple-system',
+            fontWeight: FontWeight.w500,
+          ),
+          items: items.map((opt) {
+            return DropdownMenuItem<String>(
+              value: opt,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$prefixLabel ',
+                    style: TextStyle(
+                      color: textMuted,
+                      fontSize: 11.5,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                  Text(
+                    opt,
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildViewSegmentButton({
+    required IconData icon,
+    required String tooltip,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        borderRadius: BorderRadius.circular(7),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: isSelected
-                ? (isAlert ? semanticDanger : accentPetrol)
-                : surfaceCard,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: isSelected
-                  ? (isAlert ? semanticDanger : accentPetrol)
-                  : borderSubtle,
-            ),
+            color: isSelected ? surfaceCard : Colors.transparent,
+            borderRadius: BorderRadius.circular(7),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(
+                        alpha: isVoxelDarkMode ? 0.30 : 0.06,
+                      ),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ]
+                : null,
           ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? textPrimary : textSecondary,
-              fontSize: 11,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-            ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isSelected ? accentPetrol : textSecondary,
           ),
         ),
       ),
     );
   }
 
-  Widget _inventoryCard(InventoryItem item) {
-    final ratio = item.remainingRatio;
-    final low = item.isLowStock;
-    final depleted = item.isDepleted;
-    final spoolColor = parseHex(item.colorHex);
-    final hasRealBrand =
-        item.brand.trim().isNotEmpty && item.brand.trim() != 'Genérica';
+  void _handleInventoryAction(InventoryItem item, String val) async {
+    if (val == 'weigh') {
+      _showWeighAndTareDialog(item);
+    } else if (val == 'toggle_en_uso') {
+      await vm.toggleEnUso(item, !item.isEnUso);
+      if (!mounted) return;
+      toast(
+        context,
+        !item.isEnUso
+            ? 'Carrete marcado como En Uso'
+            : 'Carrete marcado como Sellado',
+      );
+    } else if (val == 'edit') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AddProductScreen(vm: vm, itemToEdit: item),
+        ),
+      );
+    } else if (val == 'copy') {
+      await vm.duplicateItem(item);
+      if (!mounted) return;
+      toast(context, 'Carrete duplicado con éxito');
+    } else if (val == 'delete') {
+      _confirmDeleteItem(item);
+    }
+  }
 
+  Widget _inventoryTable(List<InventoryItem> items) {
     return Container(
-      padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
         color: surfaceCard,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: depleted
-              ? borderSubtle
-              : low
-                  ? semanticDanger.withValues(alpha: 0.5)
-                  : borderSubtle,
-        ),
+        border: Border.all(color: borderSubtle),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // 1. Fila Superior: Swatch + Nombre/Marca + Menú (...)
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              colorSwatchCircle(spoolColor, size: 15),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (hasRealBrand)
-                      Text(
-                        item.brand.toUpperCase(),
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.6,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    Text(
-                      '${item.material} · ${item.color}',
+          // Header de la tabla técnica
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+            decoration: BoxDecoration(
+              color: surfaceElevated.withValues(alpha: 0.65),
+              border: Border(bottom: BorderSide(color: borderSubtle)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: Text(
+                    'CARRETE / MATERIAL',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'MARCA',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'UBICACIÓN',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'STOCK ACTUAL',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'NIVEL',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'ESTADO',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.6,
+                      fontFamily: '-apple-system',
+                    ),
+                  ),
+                ),
+                const SizedBox(
+                  width: 40,
+                  child: Center(
+                    child: Text(
+                      '···',
                       style: TextStyle(
-                        color: textPrimary,
-                        fontSize: 13,
+                        color: Colors.grey,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                ),
-              ),
-              if (depleted)
-                _statusBadge('AGOTADO', semanticDanger)
-              else if (low)
-                _statusBadge('BAJO STOCK', semanticDanger)
-              else if (item.isEnUso)
-                _statusBadge('EN USO', Colors.amber.shade700)
-              else
-                _statusBadge('SELLADO', const Color(0xFF10B981)),
-              const SizedBox(width: 4),
-              PopupMenuButton<String>(
-                tooltip: 'Opciones',
-                icon: Icon(Icons.more_horiz_rounded,
-                    size: 18, color: textSecondary),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                color: surfaceElevated,
-                onSelected: (val) async {
-                  if (val == 'toggle_en_uso') {
-                    await vm.toggleEnUso(item, !item.isEnUso);
-                    if (!mounted) return;
-                    toast(
-                      context,
-                      !item.isEnUso
-                          ? 'Bobina marcada como En Uso'
-                          : 'Bobina marcada como Sellada',
-                    );
-                  } else if (val == 'edit') {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            AddProductScreen(vm: vm, itemToEdit: item),
-                      ),
-                    );
-                  } else if (val == 'copy') {
-                    await vm.duplicateItem(item);
-                    if (!mounted) return;
-                    toast(context, 'Bobina duplicada con éxito');
-                  } else if (val == 'delete') {
-                    _confirmDeleteItem(item);
-                  }
-                },
-                itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: 'toggle_en_uso',
-                    child: Row(
-                      children: [
-                        Icon(
-                          item.isEnUso
-                              ? Icons.lock_outline
-                              : Icons.lock_open_outlined,
-                          size: 15,
-                          color: textSecondary,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          item.isEnUso
-                              ? 'Marcar como Sellado'
-                              : 'Marcar como En Uso',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit_outlined,
-                            size: 15, color: textSecondary),
-                        const SizedBox(width: 8),
-                        const Text('Editar bobina',
-                            style: TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'copy',
-                    child: Row(
-                      children: [
-                        Icon(Icons.copy_outlined,
-                            size: 15, color: textSecondary),
-                        const SizedBox(width: 8),
-                        const Text('Duplicar ficha',
-                            style: TextStyle(fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete_outline,
-                            size: 15, color: semanticDanger),
-                        SizedBox(width: 8),
-                        Text('Eliminar',
-                            style:
-                                TextStyle(fontSize: 12, color: semanticDanger)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-
-          // 2. Medidor Central de Stock
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      Text(
-                        '${item.stockActual.toInt()} g',
-                        style: TextStyle(
-                          color: low ? semanticDanger : textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        'de ${item.stockInicial.toInt()} g',
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    '${(ratio * 100).toInt()}%',
-                    style: TextStyle(
-                      color: low ? semanticDanger : textSecondary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: LinearProgressIndicator(
-                  value: ratio,
-                  minHeight: 4,
-                  backgroundColor: surfaceElevated,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    depleted
-                        ? textMuted
-                        : low
-                            ? semanticDanger
-                            : accentPetrol,
                   ),
                 ),
-              ),
-            ],
-          ),
-
-          // 3. Fila de Datos Técnicos
-          Row(
-            children: [
-              Text(
-                '📍 ${item.effectiveLocation}',
-                style: TextStyle(
-                  color: textSecondary,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '· ${item.diameter.toStringAsFixed(2)} mm',
-                style: TextStyle(color: textSecondary, fontSize: 10),
-              ),
-              if (item.tempNozzle != null) ...[
-                Text(' · ♨ ${item.tempNozzle}°C',
-                    style: TextStyle(color: textSecondary, fontSize: 10)),
               ],
-            ],
+            ),
           ),
 
-          // 4. Fila Inferior de Acciones Rápidas
-          Row(
-            children: [
-              // Botón destacado para Báscula
-              Expanded(
-                child: InkWell(
-                  onTap: () => _showWeighAndTareDialog(item),
-                  borderRadius: BorderRadius.circular(6),
-                  child: Container(
-                    height: 28,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: surfaceElevated,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: borderSubtle),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.scale_outlined,
-                            size: 13, color: textSecondary),
-                        const SizedBox(width: 5),
-                        Text(
-                          'Pesar en báscula',
-                          style: TextStyle(
-                            color: textPrimary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+          // Filas de la tabla
+          Expanded(
+            child: ListView.separated(
+              padding: EdgeInsets.zero,
+              itemCount: items.length,
+              separatorBuilder: (_, __) => Divider(
+                height: 1,
+                thickness: 1,
+                color: borderSubtle.withValues(alpha: 0.7),
               ),
-              const SizedBox(width: 6),
-              // Ajustes rápidos
-              _adjustTextButton('-50g', () => vm.updateStock(item, -50)),
-              const SizedBox(width: 4),
-              _adjustTextButton('+50g', () => vm.updateStock(item, 50)),
-            ],
+              itemBuilder: (_, index) {
+                final item = items[index];
+                return _InventoryTableRowWidget(
+                  item: item,
+                  spoolColor: parseHex(item.colorHex),
+                  ratio: item.remainingRatio,
+                  low: item.isLowStock,
+                  depleted: item.isDepleted,
+                  isDarkMode: isVoxelDarkMode,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                  textMuted: textMuted,
+                  surfaceElevated: surfaceElevated,
+                  accentPetrol: accentPetrol,
+                  semanticDanger: semanticDanger,
+                  onTap: () => _showWeighAndTareDialog(item),
+                  onAction: (val) => _handleInventoryAction(item, val),
+                );
+              },
+            ),
           ),
         ],
       ),
     );
   }
-
-  Widget _inventoryTable(List<InventoryItem> items) => ListView.separated(
-        padding: const EdgeInsets.only(bottom: 20),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 6),
-        itemBuilder: (_, index) {
-          final item = items[index];
-          final ratio = item.remainingRatio;
-          final low = item.isLowStock;
-          final depleted = item.isDepleted;
-
-          return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: surfaceCard,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color:
-                    low ? semanticDanger.withValues(alpha: 0.5) : borderSubtle,
-              ),
-            ),
-            child: Row(
-              children: [
-                colorSwatchCircle(parseHex(item.colorHex), size: 13),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 3,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '${item.brand != 'Genérica' ? '[${item.brand}] ' : ''}${item.material} · ${item.color}',
-                              style: TextStyle(
-                                color: textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          _statusBadge(
-                            item.isEnUso ? 'EN USO' : 'SELLADO',
-                            item.isEnUso
-                                ? Colors.amber.shade700
-                                : const Color(0xFF10B981),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        '📍 ${item.effectiveLocation} · ${item.diameter.toStringAsFixed(2)} mm'
-                        '${item.tempNozzle != null ? ' · ♨ ${item.tempNozzle}°C' : ''}',
-                        style: TextStyle(color: textSecondary, fontSize: 10),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '${item.stockActual.toInt()} g disp.',
-                            style: TextStyle(
-                              color: low ? semanticDanger : textPrimary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          Text(
-                            '${(ratio * 100).toInt()}%',
-                            style: TextStyle(
-                              color: low ? semanticDanger : textSecondary,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(2),
-                        child: LinearProgressIndicator(
-                          value: ratio,
-                          minHeight: 4,
-                          backgroundColor: surfaceElevated,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            depleted
-                                ? textMuted
-                                : low
-                                    ? semanticDanger
-                                    : accentPetrol,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                IconButton(
-                  tooltip: 'Pesar en báscula',
-                  icon: Icon(Icons.scale_outlined,
-                      size: 16, color: textSecondary),
-                  onPressed: () => _showWeighAndTareDialog(item),
-                  visualDensity: VisualDensity.compact,
-                ),
-                IconButton(
-                  tooltip: 'Editar',
-                  icon:
-                      Icon(Icons.edit_outlined, size: 16, color: textSecondary),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          AddProductScreen(vm: vm, itemToEdit: item),
-                    ),
-                  ),
-                  visualDensity: VisualDensity.compact,
-                ),
-                PopupMenuButton<String>(
-                  tooltip: 'Más opciones',
-                  icon: Icon(Icons.more_horiz_rounded,
-                      size: 18, color: textSecondary),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  color: surfaceElevated,
-                  onSelected: (val) async {
-                    if (val == 'toggle_en_uso') {
-                      await vm.toggleEnUso(item, !item.isEnUso);
-                      if (!mounted) return;
-                      toast(
-                        context,
-                        !item.isEnUso
-                            ? 'Bobina marcada como En Uso'
-                            : 'Bobina marcada como Sellada',
-                      );
-                    } else if (val == 'copy') {
-                      await vm.duplicateItem(item);
-                      if (!mounted) return;
-                      toast(context, 'Bobina duplicada');
-                    } else if (val == 'delete') {
-                      _confirmDeleteItem(item);
-                    }
-                  },
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: 'toggle_en_uso',
-                      child: Text(
-                        item.isEnUso
-                            ? 'Marcar como Sellado'
-                            : 'Marcar como En Uso',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'copy',
-                      child: Text('Duplicar', style: TextStyle(fontSize: 12)),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Text('Eliminar',
-                          style:
-                              TextStyle(fontSize: 12, color: semanticDanger)),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
-      );
-
-  Widget _statusBadge(String text, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: color,
-            fontSize: 8,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.6,
-          ),
-        ),
-      );
-
-  Widget _adjustTextButton(String label, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(4),
-        child: Container(
-          height: 28,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.symmetric(horizontal: 7),
-          decoration: BoxDecoration(
-            color: surfaceElevated,
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: borderSubtle),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: textSecondary,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      );
 
   void _showWeighAndTareDialog(InventoryItem item) {
     var mode = 0; // 0 = Directo, 1 = Báscula con Tara
@@ -12127,7 +14035,7 @@ class _InventoryState extends State<InventoryScreen> {
           side: BorderSide(color: borderSubtle),
         ),
         title: Text(
-          'Eliminar Bobina',
+          'Eliminar Carrete',
           style: TextStyle(
             color: textPrimary,
             fontSize: 16,
@@ -12135,7 +14043,7 @@ class _InventoryState extends State<InventoryScreen> {
           ),
         ),
         content: Text(
-          '¿Deseas eliminar "${item.brand} - ${item.material} (${item.color})" del inventario?',
+          '¿Deseas eliminar el carrete "${item.brand} - ${item.material} (${item.color})" del inventario?',
           style: TextStyle(color: textSecondary, fontSize: 13),
         ),
         actions: [
@@ -12147,7 +14055,7 @@ class _InventoryState extends State<InventoryScreen> {
             onPressed: () {
               Navigator.pop(dialogCtx);
               vm.deleteItem(item);
-              toast(context, 'Bobina eliminada del inventario');
+              toast(context, 'Carrete eliminado del inventario');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: semanticDanger,
@@ -12166,7 +14074,7 @@ class _InventoryState extends State<InventoryScreen> {
 }
 
 // ==========================================
-// 8. AGREGAR / EDITAR BOBINA O MATERIAL
+// 8. AGREGAR / EDITAR CARRETE O MATERIAL
 // ==========================================
 class AddProductScreen extends StatefulWidget {
   final InventoryViewModel vm;
@@ -12314,7 +14222,7 @@ class _AddProductState extends State<AddProductScreen> {
 
     return Scaffold(
       appBar: darkAppBar(
-        isEditing ? 'EDITAR BOBINA' : 'AGREGAR BOBINA / MATERIAL',
+        isEditing ? 'EDITAR CARRETE' : 'AGREGAR CARRETE / MATERIAL',
         () => goBack(context),
       ),
       backgroundColor: bgBase,
@@ -12322,10 +14230,9 @@ class _AddProductState extends State<AddProductScreen> {
         padding: const EdgeInsets.all(20),
         children: [
           // 1. IDENTIFICACIÓN DEL MATERIAL
-          // 1. IDENTIFICACIÓN DEL MATERIAL
           formCard(
             title: '1. Identificación del Material',
-            subtitle: 'Marca, polímero y acabado de la bobina',
+            subtitle: 'Marca, polímero y acabado del carrete',
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final fieldWidth =
@@ -12477,7 +14384,7 @@ class _AddProductState extends State<AddProductScreen> {
               children: [
                 // Malla de colores rápidos
                 Text(
-                  'Tono visual de la bobina:',
+                  'Tono visual del carrete:',
                   style: TextStyle(
                       color: textSecondary,
                       fontSize: 11,
@@ -12587,7 +14494,7 @@ class _AddProductState extends State<AddProductScreen> {
           // 3. CAPACIDAD Y PESAJE
           formCard(
             title: '3. Capacidad y Pesaje',
-            subtitle: 'Gramos netos de la bobina y tara para báscula de taller',
+            subtitle: 'Gramos netos del carrete y tara para báscula de taller',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -12892,8 +14799,8 @@ class _AddProductState extends State<AddProductScreen> {
           // Botón de Guardar
           techButton(
             isEditing
-                ? 'ACTUALIZAR FICHA DE BOBINA'
-                : 'GUARDAR BOBINA EN INVENTARIO',
+                ? 'ACTUALIZAR FICHA DE CARRETE'
+                : 'GUARDAR CARRETE EN INVENTARIO',
             _save,
             icon: Icons.save_outlined,
             height: 48,
@@ -12963,7 +14870,7 @@ class _AddProductState extends State<AddProductScreen> {
         );
         await widget.vm.updateItem(updated);
         if (!mounted) return;
-        toast(context, 'Ficha de bobina actualizada');
+        toast(context, 'Ficha de carrete actualizada');
       } else {
         final newItem = InventoryItem(
           brand: finalBrand,
@@ -12984,7 +14891,7 @@ class _AddProductState extends State<AddProductScreen> {
         );
         await widget.vm.addItem(newItem);
         if (!mounted) return;
-        toast(context, 'Bobina agregada al inventario');
+        toast(context, 'Carrete agregado al inventario');
       }
       Navigator.pop(context);
     } finally {

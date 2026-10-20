@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:flutter/services.dart';
+import 'institutional_settings.dart';
 import 'models.dart';
 
 class WordInventoryReportConfig {
@@ -118,30 +118,7 @@ class WordInventoryExporter {
   }
 
   static Future<Uint8List> _loadTemplateBytes() async {
-    try {
-      final data = await rootBundle.load('assets/inventario_template.docx');
-      return data.buffer.asUint8List();
-    } catch (_) {
-      try {
-        final data =
-            await rootBundle.load('assets/templates/inventario_template.docx');
-        return data.buffer.asUint8List();
-      } catch (_) {
-        final paths = [
-          'assets/inventario_template.docx',
-          'assets/templates/inventario_template.docx',
-          '/home/daniel/Documentos/SILM-Sistema-Integral-de-Laboratorios-de-Manufactura--main/INVENTARIO_LABORATORIO_3D_oct_dic.docx',
-        ];
-        for (final p in paths) {
-          final file = File(p);
-          if (file.existsSync()) {
-            return file.readAsBytesSync();
-          }
-        }
-        throw StateError(
-            'No se encontró la plantilla de Word "inventario_template.docx".');
-      }
-    }
+    return InstitutionalSettings.instance.getWordTemplateBytes();
   }
 
   /// Genera los bytes de un documento .docx oficial de inventario de laboratorio
@@ -150,7 +127,22 @@ class WordInventoryExporter {
     required List<InventoryItem> items,
     WordInventoryReportConfig? config,
   }) async {
-    final reportConfig = config ?? WordInventoryReportConfig(date: DateTime.now());
+    await InstitutionalSettings.instance.load();
+    final inst = InstitutionalSettings.instance;
+
+    final reportConfig = config ??
+        WordInventoryReportConfig(
+          date: DateTime.now(),
+          directorName: inst.directorName,
+          directorRole: inst.directorRole,
+          remitenteName: inst.remitenteName,
+          remitenteRole: inst.remitenteRole,
+          encargadoName: inst.encargadoName,
+          encargadoRole: inst.encargadoRole,
+          ccp1: inst.ccp1,
+          ccp2: inst.ccp2,
+        );
+
     final templateBytes = await _loadTemplateBytes();
     final archive = ZipDecoder().decodeBytes(templateBytes);
 
@@ -182,6 +174,38 @@ class WordInventoryExporter {
         : 'OFICIO No.: P. XXXX/${reportConfig.date.year}';
     xml = xml.replaceFirst(
         RegExp(r'OFICIO No\.: [^<]+'), oficioFinal);
+
+    // Reemplazo dinámico de autoridades y firmas oficiales
+    if (reportConfig.directorName.isNotEmpty) {
+      xml = xml.replaceAll(
+          'JUAN DIONISIO CRUZ GUERRERO', _xmlEscape(reportConfig.directorName));
+      xml = xml.replaceAll(
+          '{{DIRECTOR}}', _xmlEscape(reportConfig.directorName));
+    }
+    if (reportConfig.directorRole.isNotEmpty) {
+      xml = xml.replaceAll(
+          '{{DIRECTOR_CARGO}}', _xmlEscape(reportConfig.directorRole));
+    }
+    if (reportConfig.encargadoName.isNotEmpty) {
+      xml = xml.replaceAll(
+          'CÉSAR DAVID RIVERA TOSCANO', _xmlEscape(reportConfig.encargadoName));
+      xml = xml.replaceAll(
+          '{{ENCARGADO}}', _xmlEscape(reportConfig.encargadoName));
+    }
+    if (reportConfig.encargadoRole.isNotEmpty) {
+      xml = xml.replaceAll(
+          '{{ENCARGADO_CARGO}}', _xmlEscape(reportConfig.encargadoRole));
+    }
+    if (reportConfig.remitenteName.isNotEmpty) {
+      xml = xml.replaceAll(
+          'Néstor Hilario Torres Campa', _xmlEscape(reportConfig.remitenteName));
+      xml = xml.replaceAll(
+          '{{REMITENTE}}', _xmlEscape(reportConfig.remitenteName));
+    }
+    if (reportConfig.remitenteRole.isNotEmpty) {
+      xml = xml.replaceAll(
+          '{{REMITENTE_CARGO}}', _xmlEscape(reportConfig.remitenteRole));
+    }
 
     // 3. Separación de materiales en Sellado y En Uso
     final activeItems = items.where((i) => i.stockActual > 0.001).toList();

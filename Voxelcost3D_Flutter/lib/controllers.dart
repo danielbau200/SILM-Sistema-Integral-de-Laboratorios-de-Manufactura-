@@ -7,7 +7,9 @@ class AuthViewModel extends ChangeNotifier {
   String? error;
   bool login(String email, String password) {
     final cleanEmail = email.trim().toLowerCase();
-    if ((cleanEmail == 'admin' || cleanEmail == 'admin@voxel.com') &&
+    if ((cleanEmail == 'admin' ||
+            cleanEmail == 'admin@silm.com' ||
+            cleanEmail == 'admin@voxel.com') &&
         password.trim() == 'admin123') {
       error = null;
       return true;

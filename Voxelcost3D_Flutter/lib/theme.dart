@@ -5,38 +5,38 @@ bool _isDarkMode = false;
 void setVoxelDarkMode(bool enabled) => _isDarkMode = enabled;
 bool get isVoxelDarkMode => _isDarkMode;
 
-// --- PALETA APPLE ---
+// --- PALETA ANTIGRAVITY / JET BLACK (NEGRO PURO, CERO AZULADO) ---
 Color get bgBase =>
-    _isDarkMode ? const Color(0xFF111318) : const Color(0xFFF5F5F7);
+    _isDarkMode ? const Color(0xFF0C0D0E) : const Color(0xFFF6F8FA);
 Color get surfaceCard =>
-    _isDarkMode ? const Color(0xFF1B1E25) : const Color(0xFFFFFFFF);
+    _isDarkMode ? const Color(0xFF141416) : const Color(0xFFFFFFFF);
 Color get surfaceElevated =>
-    _isDarkMode ? const Color(0xFF242832) : const Color(0xFFFAFAFC);
+    _isDarkMode ? const Color(0xFF1E1E22) : const Color(0xFFF1F5F9);
 Color get borderSubtle =>
-    _isDarkMode ? const Color(0xFF2B303A) : const Color(0xFFF0F0F0);
+    _isDarkMode ? const Color(0xFF26262B) : const Color(0xFFE2E8F0);
 Color get borderStrong =>
-    _isDarkMode ? const Color(0xFF3D4451) : const Color(0xFFE0E0E0);
+    _isDarkMode ? const Color(0xFF3A3A42) : const Color(0xFFCBD5E1);
 Color get textPrimary =>
-    _isDarkMode ? const Color(0xFFF1F3F6) : const Color(0xFF1D1D1F);
+    _isDarkMode ? const Color(0xFFF4F4F5) : const Color(0xFF0F172A);
 Color get textSecondary =>
-    _isDarkMode ? const Color(0xFFA7AFBD) : const Color(0xFF7A7A7A);
+    _isDarkMode ? const Color(0xFFA1A1AA) : const Color(0xFF475569);
 Color get textMuted =>
-    _isDarkMode ? const Color(0xFF727B89) : const Color(0xFFCCCCCC);
+    _isDarkMode ? const Color(0xFF71717A) : const Color(0xFF94A3B8);
 
-// Acentos
-const accentPetrol = Color(0xFF0066CC);
-const accentPetrolHover = Color(0xFF0071E3);
-const accentPetrolPressed = Color(0xFF0066CC);
-const accentAmber = Color(0xFF2997FF);
+// Acentos modernos (Electric Apple / Linear Blue)
+const accentPetrol = Color(0xFF2563EB);
+const accentPetrolHover = Color(0xFF1D4ED8);
+const accentPetrolPressed = Color(0xFF1E40AF);
+const accentAmber = Color(0xFF0284C7);
 
-// Semánticos
-const semanticSuccess = Color(0xFF4CAF7D);
-const semanticWarning = Color(0xFFD9A441);
-const semanticDanger = Color(0xFFD96C6C);
+// Semánticos vivos y armónicos
+const semanticSuccess = Color(0xFF10B981);
+const semanticWarning = Color(0xFFF59E0B);
+const semanticDanger = Color(0xFFEF4444);
 
 // Gráficas de Producción
-const chartPrimary = Color(0xFF0066CC);
-const chartPrimaryLight = Color(0xFF2997FF);
+const chartPrimary = Color(0xFF2563EB);
+const chartPrimaryLight = Color(0xFF60A5FA);
 Color get chartSecondary => textPrimary;
 Color get chartAux => textSecondary;
 
@@ -158,11 +158,11 @@ ThemeData voxelTheme() => ThemeData(
         onError: const Color(0xFFFFFFFF),
         onSurfaceVariant: textSecondary,
         surfaceContainerHighest: surfaceElevated,
-        outline: _isDarkMode ? const Color(0xFF383E4B) : const Color(0xFFE2E4E9),
-        outlineVariant: _isDarkMode ? const Color(0xFF282C35) : const Color(0xFFEAECEF),
+        outline: _isDarkMode ? const Color(0xFF3A3A42) : const Color(0xFFE2E8F0),
+        outlineVariant: _isDarkMode ? const Color(0xFF222226) : const Color(0xFFF1F5F9),
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: bgBase,
+        backgroundColor: surfaceCard,
         foregroundColor: textPrimary,
         centerTitle: true,
         elevation: 0,
@@ -171,7 +171,7 @@ ThemeData voxelTheme() => ThemeData(
           color: textPrimary,
           fontSize: 16,
           fontWeight: FontWeight.w700,
-          letterSpacing: 1.2,
+          letterSpacing: -0.2,
           fontFamilyFallback: const ['Inter', 'sans-serif'],
         ),
       ),
@@ -185,7 +185,7 @@ ThemeData voxelTheme() => ThemeData(
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: borderSubtle),
         ),
       ),
@@ -322,7 +322,7 @@ Widget formCard({
         border: Border.all(
           color: _isDarkMode
               ? Colors.white.withValues(alpha: 0.08)
-              : const Color(0xFFE8EAEE),
+              : borderSubtle,
           width: 1,
         ),
         boxShadow: [
@@ -437,6 +437,19 @@ class _SidebarIconPainter extends CustomPainter {
       oldDelegate.color != color;
 }
 
+String cleanAppBarTitle(String raw) {
+  if (raw.isEmpty) return raw;
+  final parts = raw.split(' ');
+  return parts.map((w) {
+    if (w.isEmpty) return w;
+    final upper = w.toUpperCase();
+    if (upper == 'DE' || upper == 'DEL' || upper == 'Y' || upper == 'EN') {
+      return w.toLowerCase();
+    }
+    return w[0].toUpperCase() + w.substring(1).toLowerCase();
+  }).join(' ');
+}
+
 PreferredSizeWidget darkAppBar(
   String title,
   VoidCallback onBack, {
@@ -449,17 +462,17 @@ PreferredSizeWidget darkAppBar(
   bool hideLeading = false,
 }) =>
     AppBar(
-      backgroundColor: bgBase,
+      backgroundColor: surfaceCard,
       elevation: 0,
       scrolledUnderElevation: 0,
       automaticallyImplyLeading: false,
       title: Text(
-        title.toUpperCase(),
+        cleanAppBarTitle(title),
         style: TextStyle(
           color: textPrimary,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.2,
-          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.3,
+          fontSize: 16,
         ),
       ),
       leading: hideLeading
@@ -468,7 +481,7 @@ PreferredSizeWidget darkAppBar(
               onEnter: onHoverEnter != null ? (_) => onHoverEnter() : null,
               onExit: onHoverExit != null ? (_) => onHoverExit() : null,
               child: IconButton(
-                hoverColor: Colors.transparent,
+                hoverColor: surfaceElevated,
                 highlightColor: Colors.transparent,
                 splashColor: Colors.transparent,
                 focusColor: Colors.transparent,
