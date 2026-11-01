@@ -1743,6 +1743,25 @@ class _HistoryState extends State<PrintHistoryScreen> {
     }
   }
 
+  IconData _getPeriodIcon() {
+    switch (_periodFilter) {
+      case 'ACTUAL':
+        return Icons.school_outlined;
+      case 'ANTERIOR':
+        return Icons.history_edu_outlined;
+      case 'ESTE MES':
+        return Icons.calendar_view_month;
+      case '7 DÍAS':
+        return Icons.date_range;
+      case 'HOY':
+        return Icons.today;
+      case 'TODOS':
+        return Icons.all_inclusive_rounded;
+      default:
+        return Icons.calendar_today_rounded;
+    }
+  }
+
   List<PrintRecord> _getFilteredRecords() {
     final query = _searchController.text.trim().toLowerCase();
     final now = DateTime.now();
@@ -2155,164 +2174,276 @@ class _HistoryState extends State<PrintHistoryScreen> {
         ),
       );
 
-      // 2. Opciones de Semestre / Periodo (estilo macOS NSPopUpButton)
+      // 2. Selector emergente animado de Semestre / Periodo (con estilo y animación de Análisis de Producción)
       final now = DateTime.now();
       final currentSem = AcademicSemesterInfo.getCurrent(now);
       final prevSem = AcademicSemesterInfo.getPrevious(now);
       final availableSemesters =
           AcademicSemesterInfo.getAvailable(vm.allRecords, now);
 
-      final periodItems = <DropdownMenuItem<String>>[
-        DropdownMenuItem(
-          value: 'ACTUAL',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.school_outlined, size: 14, color: accentPetrol),
-              const SizedBox(width: 7),
-              Text('Semestre Actual (${currentSem.shortTerm})',
-                  style: const TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w600)),
-            ],
-          ),
+      final periodSelector = PopupMenuButton<String>(
+        tooltip: 'Seleccionar periodo o semestre',
+        color: surfaceCard,
+        elevation: 12,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: borderSubtle, width: 0.8),
         ),
-        DropdownMenuItem(
-          value: 'ANTERIOR',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.history_edu_outlined,
-                  size: 14, color: accentPetrol),
-              const SizedBox(width: 7),
-              Text('Semestre Anterior (${prevSem.shortTerm})',
-                  style: const TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w600)),
-            ],
-          ),
-        ),
-      ];
+        offset: const Offset(0, 40),
+        onSelected: (val) {
+          setState(() => _periodFilter = val);
+        },
+        itemBuilder: (context) {
+          final items = <PopupMenuEntry<String>>[];
 
-      for (final sem in availableSemesters) {
-        if ((sem.year == currentSem.year && sem.semNum == currentSem.semNum) ||
-            (sem.year == prevSem.year && sem.semNum == prevSem.semNum)) {
-          continue;
-        }
-        periodItems.add(
-          DropdownMenuItem(
-            value: sem.key,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.calendar_month_outlined,
-                    size: 14, color: textSecondary),
-                const SizedBox(width: 7),
-                Text(sem.term, style: const TextStyle(fontSize: 12.5)),
-              ],
-            ),
-          ),
-        );
-      }
-
-      periodItems.addAll([
-        DropdownMenuItem(
-          value: 'ESTE MES',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.calendar_view_month, size: 14, color: textMuted),
-              const SizedBox(width: 7),
-              const Text('Este mes', style: TextStyle(fontSize: 12.5)),
-            ],
-          ),
-        ),
-        DropdownMenuItem(
-          value: '7 DÍAS',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.date_range, size: 14, color: textMuted),
-              const SizedBox(width: 7),
-              const Text('Últimos 7 días', style: TextStyle(fontSize: 12.5)),
-            ],
-          ),
-        ),
-        DropdownMenuItem(
-          value: 'HOY',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.today, size: 14, color: textMuted),
-              const SizedBox(width: 7),
-              const Text('Hoy', style: TextStyle(fontSize: 12.5)),
-            ],
-          ),
-        ),
-        DropdownMenuItem(
-          value: 'TODOS',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.all_inclusive, size: 14, color: textMuted),
-              const SizedBox(width: 7),
-              const Text('Histórico completo',
-                  style: TextStyle(fontSize: 12.5)),
-            ],
-          ),
-        ),
-      ]);
-
-      if (!periodItems.any((item) => item.value == _periodFilter)) {
-        if (_periodFilter.startsWith('SEM_')) {
-          final s = AcademicSemesterInfo.getActive(_periodFilter, now);
-          periodItems.add(
-            DropdownMenuItem(
-              value: _periodFilter,
-              child: Text(s.term, style: const TextStyle(fontSize: 12.5)),
+          // 1. Semestre Actual
+          final isCur = _periodFilter == 'ACTUAL';
+          items.add(
+            PopupMenuItem<String>(
+              value: 'ACTUAL',
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.school_outlined,
+                    size: 14,
+                    color: isCur ? accentPetrol : textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Semestre Actual',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight:
+                                isCur ? FontWeight.w700 : FontWeight.w500,
+                            color: isCur ? accentPetrol : textPrimary,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                        Text(
+                          '${currentSem.term} · ${currentSem.shortTerm}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: textSecondary,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isCur)
+                    const Icon(Icons.check_rounded,
+                        size: 14, color: accentPetrol),
+                ],
+              ),
             ),
           );
-        } else {
-          _periodFilter = 'ACTUAL';
-        }
-      }
 
-      final periodSelector = Container(
-        height: 36,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: surfaceCard,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: _periodFilter != 'TODOS'
-                ? accentPetrol.withValues(alpha: 0.45)
-                : borderSubtle,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
+          // 2. Semestre Anterior
+          final isPrev = _periodFilter == 'ANTERIOR';
+          items.add(
+            PopupMenuItem<String>(
+              value: 'ANTERIOR',
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.history_edu_outlined,
+                    size: 14,
+                    color: isPrev ? accentPetrol : textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Semestre Anterior',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight:
+                                isPrev ? FontWeight.w700 : FontWeight.w500,
+                            color: isPrev ? accentPetrol : textPrimary,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                        Text(
+                          '${prevSem.term} · ${prevSem.shortTerm}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: textSecondary,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isPrev)
+                    const Icon(Icons.check_rounded,
+                        size: 14, color: accentPetrol),
+                ],
+              ),
             ),
-          ],
-        ),
-        child: DropdownButtonHideUnderline(
-          child: DropdownButton<String>(
-            value: _periodFilter,
-            dropdownColor: surfaceCard,
+          );
+
+          // 3. Semestres históricos registrados
+          final pastSemesters = availableSemesters
+              .where((sem) =>
+                  !(sem.year == currentSem.year &&
+                      sem.semNum == currentSem.semNum) &&
+                  !(sem.year == prevSem.year && sem.semNum == prevSem.semNum))
+              .toList();
+
+          if (pastSemesters.isNotEmpty) {
+            items.add(const PopupMenuDivider(height: 8));
+            for (final sem in pastSemesters) {
+              final isSelected = _periodFilter == sem.key;
+              items.add(
+                PopupMenuItem<String>(
+                  value: sem.key,
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today_rounded,
+                        size: 13,
+                        color: isSelected ? accentPetrol : textSecondary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              sem.term,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: isSelected ? accentPetrol : textPrimary,
+                                fontFamily: '-apple-system',
+                              ),
+                            ),
+                            Text(
+                              '${sem.shortTerm} · ${sem.year}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: textSecondary,
+                                fontFamily: '-apple-system',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (isSelected)
+                        const Icon(Icons.check_rounded,
+                            size: 14, color: accentPetrol),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+
+          items.add(const PopupMenuDivider(height: 8));
+
+          // 4. Rangos rápidos y filtro global
+          final quickRanges = [
+            ('ESTE MES', 'Este mes', Icons.calendar_view_month),
+            ('7 DÍAS', 'Últimos 7 días', Icons.date_range),
+            ('HOY', 'Hoy', Icons.today),
+            ('TODOS', 'Histórico completo', Icons.all_inclusive_rounded),
+          ];
+
+          for (final entry in quickRanges) {
+            final code = entry.$1;
+            final label = entry.$2;
+            final icon = entry.$3;
+            final isSelected = _periodFilter == code;
+            items.add(
+              PopupMenuItem<String>(
+                value: code,
+                child: Row(
+                  children: [
+                    Icon(
+                      icon,
+                      size: 14,
+                      color: isSelected ? accentPetrol : textSecondary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w500,
+                          color: isSelected ? accentPetrol : textPrimary,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                    ),
+                    if (isSelected)
+                      const Icon(Icons.check_rounded,
+                          size: 14, color: accentPetrol),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return items;
+        },
+        child: Container(
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: surfaceCard,
             borderRadius: BorderRadius.circular(8),
-            icon: Icon(Icons.keyboard_arrow_down_rounded,
-                color: textSecondary, size: 18),
-            items: periodItems,
-            onChanged: (val) {
-              if (val != null) {
-                setState(() => _periodFilter = val);
-              }
-            },
-            style: TextStyle(
-              color: textPrimary,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              fontFamily: '-apple-system',
+            border: Border.all(
+              color: _periodFilter != 'TODOS'
+                  ? accentPetrol.withValues(alpha: 0.45)
+                  : borderSubtle,
             ),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    Colors.black.withValues(alpha: isVoxelDarkMode ? 0.2 : 0.03),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _getPeriodIcon(),
+                size: 14,
+                color: _periodFilter != 'TODOS' ? accentPetrol : textSecondary,
+              ),
+              const SizedBox(width: 7),
+              Text(
+                _getPeriodLabel(),
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: textSecondary,
+                size: 18,
+              ),
+            ],
           ),
         ),
       );
@@ -6717,6 +6848,8 @@ class _AnalyticsState extends State<AnalyticsScreen> {
   String? _selectedMonthKey;
   int _metricIndex = 0; // 0 = Gramos, 1 = Piezas, 2 = Costo estimado
   bool _compareWithPrevious = false;
+  int _distributionTabIndex = 0; // 0 = Materiales, 1 = Categorías, 2 = Colores
+  bool _showAllPrinters = false;
 
   // Inspector lateral deslizante (detalle de pieza)
   _TopPieceStat? _inspectedPiece;
@@ -6963,7 +7096,31 @@ class _AnalyticsState extends State<AnalyticsScreen> {
             displayedRecords.fold(0.0, (s, r) => s + r.totalGrams);
         final displayedPieces =
             displayedRecords.fold(0, (s, r) => s + r.cantidad);
-        final spoolsUsed = displayedGrams / 1000.0;
+
+        // 1. Gasto total acumulado del periodo en dinero ($ MXN)
+        final invMap = {for (final it in inventoryItems) it.id: it};
+        double totalPeriodCost = 0.0;
+        for (final r in displayedRecords) {
+          for (final m in r.materials) {
+            final spool = m.spoolId != null ? invMap[m.spoolId] : null;
+            final costPerGram = (spool != null && spool.costPerGram > 0)
+                ? spool.costPerGram
+                : avgCostPerGram;
+            totalPeriodCost += (m.grams * costPerGram) * r.cantidad;
+          }
+        }
+        if (totalPeriodCost == 0.0 && displayedGrams > 0) {
+          totalPeriodCost = displayedGrams * avgCostPerGram;
+        }
+
+        // 2. Alumnos y solicitantes únicos atendidos
+        final uniqueStudents = <String>{};
+        final uniqueFaculty = <String>{};
+        final uniqueOthers = <String>{};
+
+        // 3. Utilización de impresoras
+        final printerUsageMap =
+            <String, ({int count, int pieces, double grams})>{};
 
         final materialMap = <String, double>{};
         final colorMap = <String, double>{};
@@ -6971,6 +7128,33 @@ class _AnalyticsState extends State<AnalyticsScreen> {
         final pieceMap = <String, _TopPieceStat>{};
 
         for (final r in displayedRecords) {
+          final reqType = (r.requesterType ?? '').trim().toLowerCase();
+          final identifier = (r.requesterId ?? '').trim().isNotEmpty
+              ? r.requesterId!.trim()
+              : (r.requesterName ?? '').trim();
+
+          if (identifier.isNotEmpty) {
+            if (reqType.contains('estudiante') || reqType.contains('alumno')) {
+              uniqueStudents.add(identifier);
+            } else if (reqType.contains('docente') ||
+                reqType.contains('profesor')) {
+              uniqueFaculty.add(identifier);
+            } else {
+              uniqueOthers.add(identifier);
+            }
+          }
+
+          final pName = (r.printerName ?? '').trim().isEmpty
+              ? 'Impresora Principal'
+              : r.printerName!.trim();
+          final prev =
+              printerUsageMap[pName] ?? (count: 0, pieces: 0, grams: 0.0);
+          printerUsageMap[pName] = (
+            count: prev.count + 1,
+            pieces: prev.pieces + r.cantidad,
+            grams: prev.grams + r.totalGrams,
+          );
+
           final cat = r.figureCategory.trim().isEmpty
               ? 'General'
               : r.figureCategory.trim();
@@ -7003,6 +7187,27 @@ class _AnalyticsState extends State<AnalyticsScreen> {
             final colObj = findVoxelColor(value: m.color, name: m.colorName);
             colorMap[colObj.name] =
                 (colorMap[colObj.name] ?? 0.0) + (m.grams * r.cantidad);
+          }
+        }
+
+        final uniqueTotalRequesters = uniqueStudents.length +
+            uniqueFaculty.length +
+            uniqueOthers.length;
+
+        // 4. Estado de inventario y stock disponible
+        double inventoryStockGrams = 0.0;
+        int activeSpoolsCount = 0;
+        int lowStockSpoolsCount = 0;
+        final lowStockItems = <InventoryItem>[];
+
+        for (final item in inventoryItems) {
+          if (item.stockActual > 0.001) {
+            activeSpoolsCount++;
+            inventoryStockGrams += item.stockActual;
+            if (item.isLowStock) {
+              lowStockSpoolsCount++;
+              lowStockItems.add(item);
+            }
           }
         }
 
@@ -7059,28 +7264,34 @@ class _AnalyticsState extends State<AnalyticsScreen> {
             body: Stack(
               children: [
                 ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
                   children: [
-                    // 1. CARDS OPERATIVAS COMPACTAS (2 KPIs)
-                    _buildKpiSection(
+                    // 1. HERO METRICS BAR (4 métricas ejecutivas unificadas con estilo macOS)
+                    _buildHeroMetricsBar(
+                      totalCost: totalPeriodCost,
                       displayedGrams: displayedGrams,
-                      spoolsUsed: spoolsUsed,
-                      displayedPieces: displayedPieces,
                       recordCount: displayedRecords.length,
+                      displayedPieces: displayedPieces,
+                      uniqueTotalRequesters: uniqueTotalRequesters,
+                      uniqueStudentsCount: uniqueStudents.length,
+                      uniqueFacultyCount: uniqueFaculty.length,
+                      inventoryStockGrams: inventoryStockGrams,
+                      activeSpoolsCount: activeSpoolsCount,
+                      lowStockSpoolsCount: lowStockSpoolsCount,
                     ),
 
                     if (_selectedMonthKey != null) ...[
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 14),
                       _buildMonthFilterBanner(activeSem),
                     ],
 
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
 
-                    // 2. GRÁFICA DE PRODUCCIÓN SEMESTRAL + CATEGORÍAS
+                    // 2. FILA 1: EVOLUCIÓN MENSUAL + COMPOSICIÓN & TOP PIEZAS
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        final isSingleColumn = constraints.maxWidth < 950;
-                        if (isSingleColumn) {
+                        final isSingleCol = constraints.maxWidth < 1000;
+                        if (isSingleCol) {
                           return Column(
                             children: [
                               _buildEvolutionCard(
@@ -7093,8 +7304,15 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                                 compSem: compSem,
                                 avgCostPerGram: avgCostPerGram,
                               ),
-                              const SizedBox(height: 14),
-                              _buildCategoryCard(categoryMap, displayedGrams),
+                              const SizedBox(height: 16),
+                              _buildCompositionAndTopPiecesCard(
+                                materialMap: materialMap,
+                                colorMap: colorMap,
+                                categoryMap: categoryMap,
+                                topPieces: topPieces,
+                                totalGrams: displayedGrams,
+                                inventoryItems: inventoryItems,
+                              ),
                             ],
                           );
                         }
@@ -7103,6 +7321,7 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Expanded(
+                                flex: 11,
                                 child: _buildEvolutionCard(
                                   points: monthlyPoints,
                                   comparativePoints: comparativePoints,
@@ -7116,10 +7335,14 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                               ),
                               const SizedBox(width: 16),
                               Expanded(
-                                child: _buildCategoryCard(
-                                  categoryMap,
-                                  displayedGrams,
-                                  fillHeight: true,
+                                flex: 9,
+                                child: _buildCompositionAndTopPiecesCard(
+                                  materialMap: materialMap,
+                                  colorMap: colorMap,
+                                  categoryMap: categoryMap,
+                                  topPieces: topPieces,
+                                  totalGrams: displayedGrams,
+                                  inventoryItems: inventoryItems,
                                 ),
                               ),
                             ],
@@ -7128,26 +7351,26 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                       },
                     ),
 
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 16),
 
-                    // 3. PIEZAS CON MAYOR CONSUMO (INTERACTIVA) + MATERIALES Y COLORES
+                    // 3. FILA 2: PARQUE DE IMPRESORAS + SALUD DE INSUMOS & ALMACÉN
                     LayoutBuilder(
                       builder: (context, constraints) {
-                        final isSingleColumn = constraints.maxWidth < 950;
-                        if (isSingleColumn) {
+                        final isSingleCol = constraints.maxWidth < 1000;
+                        if (isSingleCol) {
                           return Column(
                             children: [
-                              _buildTopPiecesCard(
-                                topPieces,
+                              _buildPrinterUsageCard(
+                                printerUsageMap,
                                 displayedGrams,
-                                avgCostPerGram,
                               ),
-                              const SizedBox(height: 14),
-                              _buildMaterialAndColorCard(
-                                materialMap,
-                                colorMap,
+                              const SizedBox(height: 16),
+                              _buildInventoryHealthCard(
+                                lowStockItems,
+                                activeSpoolsCount,
+                                inventoryStockGrams,
                                 displayedGrams,
-                                inventoryItems,
+                                activeSem,
                               ),
                             ],
                           );
@@ -7157,20 +7380,19 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Expanded(
-                                child: _buildTopPiecesCard(
-                                  topPieces,
+                                child: _buildPrinterUsageCard(
+                                  printerUsageMap,
                                   displayedGrams,
-                                  avgCostPerGram,
-                                  fillHeight: true,
                                 ),
                               ),
                               const SizedBox(width: 16),
                               Expanded(
-                                child: _buildMaterialAndColorCard(
-                                  materialMap,
-                                  colorMap,
+                                child: _buildInventoryHealthCard(
+                                  lowStockItems,
+                                  activeSpoolsCount,
+                                  inventoryStockGrams,
                                   displayedGrams,
-                                  inventoryItems,
+                                  activeSem,
                                 ),
                               ),
                             ],
@@ -7592,106 +7814,193 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     );
   }
 
-  // --- SECCIÓN DE KPIS: 2 TARJETAS (MATERIAL, PIEZAS) ---
-  Widget _buildKpiSection({
+  // --- SECCIÓN HERO: 4 MÉTRICAS EJECUTIVAS UNIFICADAS ESTILO macOS ---
+  Widget _buildHeroMetricsBar({
+    required double totalCost,
     required double displayedGrams,
-    required double spoolsUsed,
-    required int displayedPieces,
     required int recordCount,
+    required int displayedPieces,
+    required int uniqueTotalRequesters,
+    required int uniqueStudentsCount,
+    required int uniqueFacultyCount,
+    required double inventoryStockGrams,
+    required int activeSpoolsCount,
+    required int lowStockSpoolsCount,
   }) {
     final gramsStr = displayedGrams >= 1000
         ? '${(displayedGrams / 1000).toStringAsFixed(2)} kg'
         : '${displayedGrams.toStringAsFixed(1)} g';
 
-    return Row(
-      children: [
-        // 1. Material consumido
-        Expanded(
-          child: _kpiCard(
-            title: 'MATERIAL CONSUMIDO',
-            value: gramsStr,
-            subtitle: 'en $recordCount impresiones (${spoolsUsed.toStringAsFixed(2)} bobinas)',
-            icon: Icons.grain_rounded,
-            accentTint: const Color(0xFF0071E3),
-          ),
-        ),
-        const SizedBox(width: 14),
+    final invStockStr = inventoryStockGrams >= 1000
+        ? '${(inventoryStockGrams / 1000).toStringAsFixed(2)} kg'
+        : '${inventoryStockGrams.toStringAsFixed(0)} g';
 
-        // 2. Piezas fabricadas
-        Expanded(
-          child: _kpiCard(
-            title: 'PIEZAS FABRICADAS',
-            value: displayedPieces.toString(),
-            subtitle: 'unidades terminadas',
-            icon: Icons.layers_rounded,
-            accentTint: const Color(0xFF34C759),
-          ),
-        ),
-      ],
+    final costStr = '\$${totalCost.toStringAsFixed(2)} MXN';
+
+    final items = [
+      (
+        title: 'GASTO ESTIMADO',
+        value: costStr,
+        sub: '$gramsStr en $recordCount tandas',
+        icon: Icons.payments_rounded,
+        accent: const Color(0xFF0A84FF),
+      ),
+      (
+        title: 'PRODUCCIÓN REAL',
+        value: '$displayedPieces piezas',
+        sub: '100% fabricadas con éxito',
+        icon: Icons.layers_rounded,
+        accent: const Color(0xFF30D158),
+      ),
+      (
+        title: 'SOLICITANTES',
+        value: uniqueTotalRequesters > 0
+            ? '$uniqueTotalRequesters personas'
+            : '$recordCount registros',
+        sub: uniqueTotalRequesters > 0
+            ? '$uniqueStudentsCount alumnos · $uniqueFacultyCount docentes'
+            : 'Sin registros este ciclo',
+        icon: Icons.school_rounded,
+        accent: const Color(0xFFBF5AF2),
+      ),
+      (
+        title: 'STOCK DISPONIBLE',
+        value: invStockStr,
+        sub: lowStockSpoolsCount > 0
+            ? '$lowStockSpoolsCount en nivel crítico (<20%)'
+            : '$activeSpoolsCount bobinas disponibles',
+        icon: Icons.inventory_2_rounded,
+        accent: lowStockSpoolsCount > 0
+            ? const Color(0xFFFF9F0A)
+            : const Color(0xFF64D2FF),
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isNarrow = constraints.maxWidth < 800;
+        final isMid = constraints.maxWidth < 1100;
+
+        if (isNarrow) {
+          return Column(
+            children: [
+              for (int i = 0; i < items.length; i++) ...[
+                if (i > 0) const SizedBox(height: 10),
+                _heroMetricCard(items[i]),
+              ],
+            ],
+          );
+        } else if (isMid) {
+          return Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(child: _heroMetricCard(items[0])),
+                  const SizedBox(width: 12),
+                  Expanded(child: _heroMetricCard(items[1])),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(child: _heroMetricCard(items[2])),
+                  const SizedBox(width: 12),
+                  Expanded(child: _heroMetricCard(items[3])),
+                ],
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            for (int i = 0; i < items.length; i++) ...[
+              if (i > 0) const SizedBox(width: 14),
+              Expanded(child: _heroMetricCard(items[i])),
+            ],
+          ],
+        );
+      },
     );
   }
 
-  Widget _kpiCard({
-    required String title,
-    required String value,
-    required String subtitle,
-    required IconData icon,
-    required Color accentTint,
-  }) {
+  Widget _heroMetricCard(({
+    String title,
+    String value,
+    String sub,
+    IconData icon,
+    Color accent,
+  }) data) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cardBorderColor, width: 1),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: textSecondary,
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6,
-                    fontFamily: '-apple-system',
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  value,
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    fontFamily: '-apple-system',
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: textSecondary,
-                    fontSize: 11,
-                    fontFamily: '-apple-system',
-                  ),
-                ),
-              ],
-            ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cardBorderColor, width: 0.8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: _isDarkMode ? 0.24 : 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
-          Container(
-            padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: accentTint.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(9),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(5.5),
+                decoration: BoxDecoration(
+                  color: data.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(data.icon, size: 14, color: data.accent),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  data.title,
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    fontFamily: '-apple-system',
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            data.value,
+            style: TextStyle(
+              color: textPrimary,
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              fontFamily: '-apple-system',
+              letterSpacing: -0.3,
+              fontFeatures: const [FontFeature.tabularFigures()],
             ),
-            child: Icon(icon, size: 20, color: accentTint),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            data.sub,
+            style: TextStyle(
+              color: textSecondary,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w400,
+              fontFamily: '-apple-system',
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -8007,17 +8316,17 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     return chartWidget;
   }
 
-  // --- TARJETA 2: CATEGORÍAS DE USO ---
-  Widget _buildCategoryCard(
-    Map<String, double> categoryMap,
-    double totalGrams, {
-    bool fillHeight = false,
+  // --- TARJETA BENTO: COMPOSICIÓN Y PIEZAS DESTACADAS ---
+  Widget _buildCompositionAndTopPiecesCard({
+    required Map<String, double> materialMap,
+    required Map<String, double> colorMap,
+    required Map<String, double> categoryMap,
+    required List<_TopPieceStat> topPieces,
+    required double totalGrams,
+    required List<InventoryItem> inventoryItems,
   }) {
-    final sortedCats = categoryMap.keys.toList()
-      ..sort((a, b) => categoryMap[b]!.compareTo(categoryMap[a]!));
-
     return Container(
-      key: const ValueKey('analytics_category_card'),
+      key: const ValueKey('analytics_composition_card'),
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(12),
@@ -8026,165 +8335,104 @@ class _AnalyticsState extends State<AnalyticsScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
         children: [
+          // Header con Segmented Tabs estilo macOS
           Row(
             children: [
               Text(
-                'CATEGORÍAS DE USO',
+                'DISTRIBUCIÓN Y CONSUMO',
                 style: TextStyle(
                   color: textPrimary,
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.6,
                   fontFamily: '-apple-system',
                 ),
               ),
               const Spacer(),
-              Text(
-                '${sortedCats.length} categorías',
-                style: TextStyle(
-                  color: textSecondary,
-                  fontSize: 11,
-                  fontFamily: '-apple-system',
+              Container(
+                height: 26,
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: segmentedBg,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: cardBorderColor, width: 0.8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _compositionTabItem(0, 'Materiales'),
+                    _compositionTabItem(1, 'Categorías'),
+                    _compositionTabItem(2, 'Colores'),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          if (sortedCats.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text(
-                  'Sin datos',
-                  style: TextStyle(color: textSecondary, fontSize: 12),
-                ),
-              ),
-            )
-          else
-            for (final cat in sortedCats.take(5)) ...[
-              Builder(
-                builder: (context) {
-                  final grams = categoryMap[cat]!;
-                  final pct = totalGrams > 0 ? (grams / totalGrams) : 0.0;
+          const SizedBox(height: 14),
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                cat,
-                                style: TextStyle(
-                                  color: textPrimary,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
-                                  fontFamily: '-apple-system',
-                                ),
-                              ),
-                            ),
-                            Text(
-                              '${(pct * 100).toStringAsFixed(1)}% · ${grams.toStringAsFixed(1)} g',
-                              style: TextStyle(
-                                color: textSecondary,
-                                fontSize: 11,
-                                fontFamily: '-apple-system',
-                                fontFeatures: const [
-                                  FontFeature.tabularFigures()
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(3),
-                          child: LinearProgressIndicator(
-                            value: pct.clamp(0.0, 1.0),
-                            backgroundColor: segmentedBg,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              accentColor.withValues(alpha: 0.85),
-                            ),
-                            minHeight: 5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ],
-        ],
-      ),
-    );
-  }
+          // Contenido dinámico según pestaña seleccionada
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: KeyedSubtree(
+              key: ValueKey<int>(_distributionTabIndex),
+              child: _distributionTabIndex == 0
+                  ? _buildMaterialSliceView(materialMap, totalGrams)
+                  : (_distributionTabIndex == 1
+                      ? _buildCategorySliceView(categoryMap, totalGrams)
+                      : _buildColorSliceView(colorMap, totalGrams)),
+            ),
+          ),
 
-  // --- TARJETA 3: PIEZAS CON MAYOR CONSUMO (INTERACTIVA: ABRE INSPECTOR) ---
-  Widget _buildTopPiecesCard(
-    List<_TopPieceStat> topPieces,
-    double totalGrams,
-    double avgCostPerGram, {
-    bool fillHeight = false,
-  }) {
-    return Container(
-      key: const ValueKey('analytics_top_pieces_card'),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cardBorderColor, width: 1),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
-        children: [
+          const SizedBox(height: 16),
+          Divider(height: 1, thickness: 0.8, color: cardBorderColor),
+          const SizedBox(height: 14),
+
+          // Subsección: Piezas con mayor volumen de fabricación
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  'IMPRESIONES CON MAYOR CONSUMO',
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6,
-                    fontFamily: '-apple-system',
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 8),
               Text(
-                'Clic para inspeccionar',
+                'PIEZAS MÁS FABRICADAS',
                 style: TextStyle(
                   color: textSecondary,
                   fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const Spacer(),
+              Text(
+                'Clic para inspeccionar',
+                style: TextStyle(
+                  color: textSecondary.withValues(alpha: 0.7),
+                  fontSize: 10,
                   fontFamily: '-apple-system',
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+
           if (topPieces.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
                 child: Text(
-                  'Sin datos',
-                  style: TextStyle(color: textSecondary, fontSize: 12),
+                  'Sin registros de piezas en este periodo',
+                  style: TextStyle(color: textSecondary, fontSize: 11),
                 ),
               ),
             )
           else
-            for (int i = 0; i < math.min(5, topPieces.length); i++) ...[
+            for (int i = 0; i < math.min(4, topPieces.length); i++) ...[
               Builder(
                 builder: (context) {
                   final item = topPieces[i];
                   final isInspected = _inspectedPiece?.name == item.name;
+                  final gramsFormatted = item.totalGrams >= 1000
+                      ? '${(item.totalGrams / 1000).toStringAsFixed(2)} kg'
+                      : '${item.totalGrams.toStringAsFixed(1)} g';
 
                   return InkWell(
                     onTap: () {
@@ -8194,8 +8442,9 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                     },
                     borderRadius: BorderRadius.circular(6),
                     child: Container(
+                      margin: const EdgeInsets.only(bottom: 4),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 7),
+                          horizontal: 8, vertical: 6.5),
                       decoration: BoxDecoration(
                         color: isInspected
                             ? accentColor.withValues(alpha: 0.12)
@@ -8205,13 +8454,24 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                       child: Row(
                         children: [
                           Container(
-                            width: 20,
+                            width: 18,
+                            height: 18,
                             alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: isInspected
+                                  ? accentColor
+                                  : (i == 0
+                                      ? accentColor.withValues(alpha: 0.15)
+                                      : segmentedBg),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
                             child: Text(
                               '${i + 1}',
                               style: TextStyle(
-                                color: textSecondary,
-                                fontSize: 11,
+                                color: isInspected
+                                    ? Colors.white
+                                    : (i == 0 ? accentColor : textSecondary),
+                                fontSize: 10,
                                 fontWeight: FontWeight.w700,
                                 fontFamily: '-apple-system',
                               ),
@@ -8233,21 +8493,21 @@ class _AnalyticsState extends State<AnalyticsScreen> {
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            '${item.totalUnits} uds · ${item.totalGrams.toStringAsFixed(1)} g',
+                            '${item.totalUnits} uds · $gramsFormatted',
                             style: TextStyle(
                               color: textSecondary,
-                              fontSize: 11,
+                              fontSize: 10.5,
                               fontFamily: '-apple-system',
                               fontFeatures: const [
                                 FontFeature.tabularFigures()
                               ],
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 4),
                           Icon(
                             Icons.chevron_right_rounded,
                             size: 14,
-                            color: textSecondary,
+                            color: isInspected ? accentColor : textSecondary,
                           ),
                         ],
                       ),
@@ -8261,20 +8521,338 @@ class _AnalyticsState extends State<AnalyticsScreen> {
     );
   }
 
-  // --- TARJETA 4: MATERIALES Y COLORES MÁS USADOS ---
-  Widget _buildMaterialAndColorCard(
-    Map<String, double> materialMap,
-    Map<String, double> colorMap,
-    double totalGrams,
-    List<InventoryItem> inventoryItems,
-  ) {
+  Widget _compositionTabItem(int index, String label) {
+    final isSelected = _distributionTabIndex == index;
+    return InkWell(
+      onTap: () => setState(() => _distributionTabIndex = index),
+      borderRadius: BorderRadius.circular(4),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: isSelected ? segmentedActiveBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(4),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? textPrimary : textSecondary,
+            fontSize: 10.5,
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            fontFamily: '-apple-system',
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMaterialSliceView(
+      Map<String, double> materialMap, double totalGrams) {
     final sortedMats = materialMap.keys.toList()
       ..sort((a, b) => materialMap[b]!.compareTo(materialMap[a]!));
+
+    if (sortedMats.isEmpty || totalGrams <= 0) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: Text('Sin datos de materiales',
+              style: TextStyle(color: textSecondary, fontSize: 11)),
+        ),
+      );
+    }
+
+    final palette = [
+      accentColor,
+      const Color(0xFF34C759),
+      const Color(0xFFFF9500),
+      const Color(0xFFAF52DE),
+      const Color(0xFFFF2D55),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            height: 8,
+            child: Row(
+              children: [
+                for (int i = 0; i < sortedMats.length; i++) ...[
+                  Builder(
+                    builder: (context) {
+                      final mName = sortedMats[i];
+                      final g = materialMap[mName]!;
+                      final ratio = (g / totalGrams).clamp(0.01, 1.0);
+                      final c = palette[i % palette.length];
+
+                      return Expanded(
+                        flex: (ratio * 1000).toInt().clamp(1, 1000),
+                        child: Tooltip(
+                          message:
+                              '$mName: ${g.toStringAsFixed(1)}g (${((g / totalGrams) * 100).toStringAsFixed(1)}%)',
+                          child: Container(
+                            color: c,
+                            margin:
+                                const EdgeInsets.symmetric(horizontal: 0.5),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 12,
+          runSpacing: 6,
+          children: [
+            for (int i = 0; i < sortedMats.length; i++) ...[
+              Builder(
+                builder: (context) {
+                  final mName = sortedMats[i];
+                  final g = materialMap[mName]!;
+                  final pct = (g / totalGrams) * 100;
+                  final c = palette[i % palette.length];
+                  final gStr = g >= 1000
+                      ? '${(g / 1000).toStringAsFixed(2)} kg'
+                      : '${g.toStringAsFixed(0)} g';
+
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration:
+                            BoxDecoration(color: c, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '$mName ',
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                      Text(
+                        '(${pct.toStringAsFixed(0)}% · $gStr)',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 10,
+                          fontFamily: '-apple-system',
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategorySliceView(
+      Map<String, double> categoryMap, double totalGrams) {
+    final sortedCats = categoryMap.keys.toList()
+      ..sort((a, b) => categoryMap[b]!.compareTo(categoryMap[a]!));
+
+    if (sortedCats.isEmpty || totalGrams <= 0) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: Text('Sin datos de categorías',
+              style: TextStyle(color: textSecondary, fontSize: 11)),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        for (final cat in sortedCats.take(4)) ...[
+          Builder(
+            builder: (context) {
+              final g = categoryMap[cat]!;
+              final pct = totalGrams > 0 ? (g / totalGrams) * 100 : 0.0;
+              final ratio = totalGrams > 0 ? (g / totalGrams).clamp(0.0, 1.0) : 0.0;
+              final gStr = g >= 1000
+                  ? '${(g / 1000).toStringAsFixed(2)} kg'
+                  : '${g.toStringAsFixed(1)} g';
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            cat,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: '-apple-system',
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${pct.toStringAsFixed(1)}% · $gStr',
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 10.5,
+                            fontFamily: '-apple-system',
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2.5),
+                      child: LinearProgressIndicator(
+                        value: ratio,
+                        minHeight: 4,
+                        backgroundColor: segmentedBg,
+                        valueColor: AlwaysStoppedAnimation<Color>(accentColor),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildColorSliceView(
+      Map<String, double> colorMap, double totalGrams) {
     final sortedColors = colorMap.keys.toList()
       ..sort((a, b) => colorMap[b]!.compareTo(colorMap[a]!));
 
+    if (sortedColors.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Center(
+          child: Text('Sin datos de colores',
+              style: TextStyle(color: textSecondary, fontSize: 11)),
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 7,
+      children: [
+        for (final cName in sortedColors.take(6)) ...[
+          Builder(
+            builder: (context) {
+              final g = colorMap[cName]!;
+              final colObj = findVoxelColor(name: cName);
+              final swatchColor = Color(colObj.value);
+              final gStr = g >= 1000
+                  ? '${(g / 1000).toStringAsFixed(2)} kg'
+                  : '${g.toStringAsFixed(0)} g';
+
+              return Tooltip(
+                message: '$cName: ${g.toStringAsFixed(1)} g',
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                  decoration: BoxDecoration(
+                    color: segmentedBg,
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: cardBorderColor, width: 0.8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: swatchColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.black.withValues(alpha: 0.25),
+                            width: 0.6,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        cName,
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        gStr,
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 9.5,
+                          fontFamily: '-apple-system',
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  // --- TARJETA BENTO: PARQUE DE IMPRESORAS CON EXPANSIÓN ---
+  Widget _buildPrinterUsageCard(
+    Map<String, ({int count, int pieces, double grams})> printerMap,
+    double totalGrams,
+  ) {
+    final sortedPrinters = printerMap.keys.toList()
+      ..sort((a, b) => printerMap[b]!.grams.compareTo(printerMap[a]!.grams));
+
+    final displayedPrinters = _showAllPrinters
+        ? sortedPrinters
+        : sortedPrinters.take(4).toList();
+
     return Container(
-      key: const ValueKey('analytics_material_color_card'),
+      key: const ValueKey('analytics_printer_usage_card'),
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(12),
@@ -8284,201 +8862,467 @@ class _AnalyticsState extends State<AnalyticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'MATERIALES Y COLORES',
-            style: TextStyle(
-              color: textPrimary,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-              fontFamily: '-apple-system',
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // 1. Barra segmentada de materiales (tipo barra de almacenamiento macOS)
-          if (sortedMats.isNotEmpty && totalGrams > 0) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: SizedBox(
-                height: 10,
-                child: Row(
-                  children: [
-                    for (int i = 0; i < sortedMats.length; i++) ...[
-                      Builder(
-                        builder: (context) {
-                          final mName = sortedMats[i];
-                          final g = materialMap[mName]!;
-                          final ratio = (g / totalGrams).clamp(0.02, 1.0);
-                          final palette = [
-                            accentColor,
-                            const Color(0xFF34C759),
-                            const Color(0xFFFF9500),
-                            const Color(0xFFAF52DE),
-                            const Color(0xFFFF2D55),
-                          ];
-                          final c = palette[i % palette.length];
-
-                          return Expanded(
-                            flex: (ratio * 100).toInt(),
-                            child: Tooltip(
-                              message:
-                                  '$mName: ${g.toStringAsFixed(1)}g (${(ratio * 100).toStringAsFixed(1)}%)',
-                              child: Container(
-                                color: c,
-                                margin:
-                                    const EdgeInsets.symmetric(horizontal: 0.5),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ],
+          Row(
+            children: [
+              Text(
+                'PARQUE DE IMPRESORAS',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  fontFamily: '-apple-system',
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-
-            // Leyenda de materiales
-            Wrap(
-              spacing: 12,
-              runSpacing: 4,
-              children: [
-                for (int i = 0; i < math.min(4, sortedMats.length); i++) ...[
-                  Builder(
-                    builder: (context) {
-                      final mName = sortedMats[i];
-                      final g = materialMap[mName]!;
-                      final pct = (g / totalGrams) * 100;
-                      final palette = [
-                        accentColor,
-                        const Color(0xFF34C759),
-                        const Color(0xFFFF9500),
-                        const Color(0xFFAF52DE),
-                      ];
-                      final c = palette[i % palette.length];
-
-                      return Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 7,
-                            height: 7,
-                            decoration: BoxDecoration(
-                              color: c,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$mName (${pct.toStringAsFixed(0)}%)',
-                            style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 10.5,
-                              fontFamily: '-apple-system',
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                decoration: BoxDecoration(
+                  color: accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text(
+                  '${sortedPrinters.length} activas',
+                  style: TextStyle(
+                    color: accentColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: '-apple-system',
                   ),
-                ],
-              ],
-            ),
-          ],
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
 
-          // 2. Colores más usados con swatches circulares
-          Text(
-            'Colores más utilizados',
-            style: TextStyle(
-              color: textPrimary,
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              fontFamily: '-apple-system',
-            ),
-          ),
-          const SizedBox(height: 8),
+          if (sortedPrinters.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Text(
+                  'Sin actividad de impresoras registrada en el periodo',
+                  style: TextStyle(color: textSecondary, fontSize: 11.5),
+                ),
+              ),
+            )
+          else ...[
+            for (int i = 0; i < displayedPrinters.length; i++) ...[
+              Builder(
+                builder: (context) {
+                  final pName = displayedPrinters[i];
+                  final stat = printerMap[pName]!;
+                  final ratio = totalGrams > 0
+                      ? (stat.grams / totalGrams).clamp(0.02, 1.0)
+                      : 0.0;
+                  final pGramsStr = stat.grams >= 1000
+                      ? '${(stat.grams / 1000).toStringAsFixed(2)} kg'
+                      : '${stat.grams.toStringAsFixed(1)} g';
 
-          if (sortedColors.isEmpty)
-            Text('Sin datos',
-                style: TextStyle(color: textSecondary, fontSize: 11))
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final cName in sortedColors.take(6)) ...[
-                  Builder(
-                    builder: (context) {
-                      final g = colorMap[cName]!;
-                      final colObj = findVoxelColor(name: cName);
-                      final swatchColor = Color(colObj.value);
-
-                      return Tooltip(
-                        message: '$cName: ${g.toStringAsFixed(1)} g',
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: segmentedBg,
-                            borderRadius: BorderRadius.circular(6),
-                            border:
-                                Border.all(color: cardBorderColor, width: 0.8),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 9),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.precision_manufacturing_rounded,
+                              size: 13,
+                              color: i == 0 ? accentColor : textSecondary,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                pName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  fontFamily: '-apple-system',
+                                ),
+                              ),
+                            ),
+                            if (i == 0 && sortedPrinters.length > 1) ...[
                               Container(
-                                width: 11,
-                                height: 11,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 5, vertical: 1.5),
                                 decoration: BoxDecoration(
-                                  color: swatchColor,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.black.withValues(alpha: 0.2),
-                                    width: 0.6,
+                                  color: const Color(0xFF34C759)
+                                      .withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Mayor demanda',
+                                  style: TextStyle(
+                                    color: Color(0xFF34C759),
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: '-apple-system',
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 6),
-                              Text(
-                                cName,
-                                style: TextStyle(
-                                  color: textPrimary,
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w500,
-                                  fontFamily: '-apple-system',
-                                ),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '${g.toStringAsFixed(0)}g',
-                                style: TextStyle(
-                                  color: textSecondary,
-                                  fontSize: 9.5,
-                                  fontFamily: '-apple-system',
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures()
-                                  ],
-                                ),
-                              ),
                             ],
+                            Text(
+                              '${stat.count} tandas · $pGramsStr',
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 10.5,
+                                fontFamily: '-apple-system',
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(2.5),
+                          child: LinearProgressIndicator(
+                            value: ratio,
+                            minHeight: 4.5,
+                            backgroundColor: segmentedBg,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              i == 0 ? accentColor : const Color(0xFF30B0C7),
+                            ),
                           ),
                         ),
-                      );
-                    },
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+
+            if (sortedPrinters.length > 4) ...[
+              const SizedBox(height: 2),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _showAllPrinters = !_showAllPrinters;
+                  });
+                },
+                borderRadius: BorderRadius.circular(5),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _showAllPrinters
+                            ? 'Mostrar menos'
+                            : 'Ver ${sortedPrinters.length - 4} más...',
+                        style: TextStyle(
+                          color: accentColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        _showAllPrinters
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        size: 14,
+                        color: accentColor,
+                      ),
+                    ],
                   ),
-                ],
-              ],
-            ),
+                ),
+              ),
+            ],
+          ],
         ],
       ),
     );
   }
 
-  // --- PANEL LATERAL DESLIZANTE (INSPECTOR DE PIEZA) ---
+  // --- TARJETA BENTO: SALUD DE INSUMOS & PROYECCIÓN ---
+  Widget _buildInventoryHealthCard(
+    List<InventoryItem> lowStockItems,
+    int activeSpoolsCount,
+    double inventoryStockGrams,
+    double displayedGrams,
+    AcademicSemesterInfo activeSem,
+  ) {
+    final invStockStr = inventoryStockGrams >= 1000
+        ? '${(inventoryStockGrams / 1000).toStringAsFixed(2)} kg'
+        : '${inventoryStockGrams.toStringAsFixed(0)} g';
+
+    // Estimación de semanas según consumo de 16 semanas por semestre
+    final weeklyRate = displayedGrams > 0 ? (displayedGrams / 16.0) : 0.0;
+    final weeksLeft = weeklyRate > 0
+        ? (inventoryStockGrams / weeklyRate).round().clamp(1, 60)
+        : 20;
+
+    return Container(
+      key: const ValueKey('analytics_inventory_health_card'),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cardBorderColor, width: 1),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'SALUD DE INSUMOS Y ALMACÉN',
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  fontFamily: '-apple-system',
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                decoration: BoxDecoration(
+                  color: (lowStockItems.isNotEmpty
+                          ? const Color(0xFFFF9500)
+                          : const Color(0xFF34C759))
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text(
+                  lowStockItems.isNotEmpty
+                      ? '${lowStockItems.length} por reponer'
+                      : 'Stock óptimo',
+                  style: TextStyle(
+                    color: lowStockItems.isNotEmpty
+                        ? const Color(0xFFFF9500)
+                        : const Color(0xFF34C759),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: '-apple-system',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // 2 Inset Tiles estilo Apple
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: segmentedBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: cardBorderColor, width: 0.7),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.inventory_2_rounded,
+                              size: 12, color: const Color(0xFF64D2FF)),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Disponibilidad',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: '-apple-system',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        invStockStr,
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: '-apple-system',
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '$activeSpoolsCount bobinas en uso',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 9.5,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: segmentedBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: cardBorderColor, width: 0.7),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.timelapse_rounded,
+                              size: 12, color: const Color(0xFF30D158)),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Proyección',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: '-apple-system',
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '~$weeksLeft semanas',
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          fontFamily: '-apple-system',
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ],
+                        ),
+                      ),
+                      Text(
+                        'Ritmo actual del periodo',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 9.5,
+                          fontFamily: '-apple-system',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Estado detallado o lista crítica
+          if (lowStockItems.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xFF34C759).withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF34C759).withValues(alpha: 0.22),
+                  width: 0.8,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded,
+                      size: 16, color: Color(0xFF34C759)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Almacén en condiciones óptimas para la demanda del periodo.',
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        fontFamily: '-apple-system',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            Text(
+              'Bobinas con nivel bajo (<20%):',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                fontFamily: '-apple-system',
+              ),
+            ),
+            const SizedBox(height: 6),
+            for (final it in lowStockItems.take(3)) ...[
+              Builder(
+                builder: (context) {
+                  final colObj = findVoxelColor(name: it.color);
+                  final swatch = Color(colObj.value);
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 5),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: swatch,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${it.material} · ${it.color} (${it.brand})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: textPrimary,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w600,
+                              fontFamily: '-apple-system',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${it.stockActual.toStringAsFixed(0)} g restantes',
+                          style: const TextStyle(
+                            color: Color(0xFFFF9500),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: '-apple-system',
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildSlidingInspector(
     List<PrintRecord> allRecords,
     double avgCostPerGram,

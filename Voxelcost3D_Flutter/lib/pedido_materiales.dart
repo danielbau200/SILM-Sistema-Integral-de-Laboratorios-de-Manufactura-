@@ -24,6 +24,8 @@ import 'theme.dart' show SidebarToggleIcon, darkAppBar, voxelColorPalette;
 String _joinUrgencyDescription(String type, String details) =>
     details.trim().isEmpty ? type.trim() : '${type.trim()}, ${details.trim()}';
 
+enum _OrderTableViewFilter { all, filamentsOnly, consumablesOnly }
+
 class PedidoMaterialesWidget extends StatefulWidget {
   final bool embedded;
   final VoidCallback? onOrdersChanged;
@@ -89,6 +91,24 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
   bool _loading = true;
   bool _saving = false;
   String? _storageError;
+  _OrderTableViewFilter _tableViewFilter = _OrderTableViewFilter.all;
+  bool _filamentsOnTop = true;
+
+  void _setTableViewFilter(_OrderTableViewFilter filter) {
+    if (_tableViewFilter == filter) return;
+    setState(() => _tableViewFilter = filter);
+    _notifyOrdersChanged();
+  }
+
+  void _setFilamentsOnTop(bool filamentsFirst) {
+    setState(() {
+      _filamentsOnTop = filamentsFirst;
+      if (_tableViewFilter != _OrderTableViewFilter.all) {
+        _tableViewFilter = _OrderTableViewFilter.all;
+      }
+    });
+    _notifyOrdersChanged();
+  }
 
   void prefillOrder({
     required String material,
@@ -1456,35 +1476,42 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
               children: [
                 _buildHeader(theme, isDark),
                 const SizedBox(height: 18),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: SizedBox(
-                    height: 38,
-                    child: ElevatedButton.icon(
-                      onPressed: () => setState(() => _expanded = !_expanded),
-                      icon: Icon(
-                        _expanded ? Icons.close_rounded : Icons.add_rounded,
-                        size: 18,
-                      ),
-                      label: Text(
-                        _expanded ? 'Ocultar pedidos' : 'Nuevo pedido',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SizedBox(
+                      height: 38,
+                      child: ElevatedButton.icon(
+                        onPressed: () =>
+                            setState(() => _expanded = !_expanded),
+                        icon: Icon(
+                          _expanded ? Icons.close_rounded : Icons.add_rounded,
+                          size: 18,
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colors.primary,
-                        foregroundColor: colors.onPrimary,
-                        elevation: 2,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 0),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                        label: Text(
+                          _expanded ? 'Ocultar pedidos' : 'Nuevo pedido',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colors.primary,
+                          foregroundColor: colors.onPrimary,
+                          elevation: 2,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 0),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                    _buildTableFilterAndOrderControls(context),
+                  ],
                 ),
                 if (_expanded) ...[
                   const SizedBox(height: 16),
@@ -1521,39 +1548,48 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (!_expanded)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SizedBox(
-              height: 40,
-              child: ElevatedButton.icon(
-                onPressed: () => setState(() => _expanded = true),
-                icon: const Icon(
-                  Icons.add_rounded,
-                  size: 18,
-                ),
-                label: const Text(
-                  'Nuevo pedido',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                height: 40,
+                child: ElevatedButton.icon(
+                  onPressed: () => setState(() => _expanded = true),
+                  icon: const Icon(
+                    Icons.add_rounded,
+                    size: 18,
                   ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.primary,
-                  foregroundColor: colors.onPrimary,
-                  elevation: 1,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                  label: const Text(
+                    'Nuevo pedido',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.primary,
+                    foregroundColor: colors.onPrimary,
+                    elevation: 1,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),
-            ),
+              _buildTableFilterAndOrderControls(context),
+            ],
           )
         else
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            spacing: 12,
+            runSpacing: 10,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1585,35 +1621,37 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                           color: Theme.of(context).colorScheme.onSurface,
                         ),
                   ),
+                  const SizedBox(width: 12),
+                  FilledButton.tonalIcon(
+                    onPressed: () => setState(() => _expanded = false),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: 15,
+                    ),
+                    label: const Text(
+                      'Cerrar formulario de pedido',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white.withValues(alpha: 0.08)
+                              : const Color(0xFFF0F2F5),
+                      foregroundColor: Theme.of(context).colorScheme.onSurface,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                    ),
+                  ),
                 ],
               ),
-              FilledButton.tonalIcon(
-                onPressed: () => setState(() => _expanded = false),
-                icon: const Icon(
-                  Icons.close_rounded,
-                  size: 15,
-                ),
-                label: const Text(
-                  'Cerrar formulario de pedido',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: FilledButton.styleFrom(
-                  backgroundColor:
-                      Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white.withValues(alpha: 0.08)
-                          : const Color(0xFFF0F2F5),
-                  foregroundColor: Theme.of(context).colorScheme.onSurface,
-                  elevation: 0,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                ),
-              ),
+              _buildTableFilterAndOrderControls(context),
             ],
           ),
         if (_expanded) ...[
@@ -3035,29 +3073,389 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
     );
   }
 
+  Widget _buildTableFilterAndOrderControls(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    final buttonDecoration = BoxDecoration(
+      color: isDark ? const Color(0xFF1B1E26) : const Color(0xFFF0F2F6),
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.10)
+            : const Color(0xFFDCE1E8),
+      ),
+    );
+
+    IconData filterIcon;
+    String filterLabel;
+    switch (_tableViewFilter) {
+      case _OrderTableViewFilter.all:
+        filterIcon = Icons.layers_outlined;
+        filterLabel = 'Ambos';
+        break;
+      case _OrderTableViewFilter.filamentsOnly:
+        filterIcon = Icons.album_outlined;
+        filterLabel = 'Solo filamentos';
+        break;
+      case _OrderTableViewFilter.consumablesOnly:
+        filterIcon = Icons.build_circle_outlined;
+        filterLabel = 'Solo consumibles';
+        break;
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        // 1. Botón único de Filtrar que despliega opciones al pulsar
+        PopupMenuButton<_OrderTableViewFilter>(
+          key: const ValueKey('order_filter_popup_button'),
+          tooltip: 'Filtrar pedidos',
+          offset: const Offset(0, 44),
+          color: theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : const Color(0xFFDCE1E8),
+            ),
+          ),
+          onSelected: _setTableViewFilter,
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: _OrderTableViewFilter.all,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.layers_outlined,
+                    size: 18,
+                    color: _tableViewFilter == _OrderTableViewFilter.all
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Ambos',
+                    style: TextStyle(
+                      fontWeight:
+                          _tableViewFilter == _OrderTableViewFilter.all
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                      color: _tableViewFilter == _OrderTableViewFilter.all
+                          ? colors.primary
+                          : null,
+                    ),
+                  ),
+                  if (_tableViewFilter == _OrderTableViewFilter.all) ...[
+                    const Spacer(),
+                    Icon(Icons.check_rounded, size: 16, color: colors.primary),
+                  ],
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: _OrderTableViewFilter.filamentsOnly,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.album_outlined,
+                    size: 18,
+                    color: _tableViewFilter ==
+                            _OrderTableViewFilter.filamentsOnly
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Solo filamentos',
+                    style: TextStyle(
+                      fontWeight: _tableViewFilter ==
+                              _OrderTableViewFilter.filamentsOnly
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: _tableViewFilter ==
+                              _OrderTableViewFilter.filamentsOnly
+                          ? colors.primary
+                          : null,
+                    ),
+                  ),
+                  if (_tableViewFilter ==
+                      _OrderTableViewFilter.filamentsOnly) ...[
+                    const Spacer(),
+                    Icon(Icons.check_rounded, size: 16, color: colors.primary),
+                  ],
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: _OrderTableViewFilter.consumablesOnly,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.build_circle_outlined,
+                    size: 18,
+                    color: _tableViewFilter ==
+                            _OrderTableViewFilter.consumablesOnly
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Solo consumibles',
+                    style: TextStyle(
+                      fontWeight: _tableViewFilter ==
+                              _OrderTableViewFilter.consumablesOnly
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: _tableViewFilter ==
+                              _OrderTableViewFilter.consumablesOnly
+                          ? colors.primary
+                          : null,
+                    ),
+                  ),
+                  if (_tableViewFilter ==
+                      _OrderTableViewFilter.consumablesOnly) ...[
+                    const Spacer(),
+                    Icon(Icons.check_rounded, size: 16, color: colors.primary),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          child: Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: buttonDecoration,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(filterIcon, size: 16, color: colors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  filterLabel,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // 2. Botón único de Ordenar que despliega opciones y solo muestra iconos
+        PopupMenuButton<bool>(
+          key: const ValueKey('order_direction_popup_button'),
+          tooltip: _filamentsOnTop
+              ? 'Filamentos arriba · Consumibles abajo'
+              : 'Consumibles arriba · Filamentos abajo',
+          offset: const Offset(0, 44),
+          color: theme.colorScheme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : const Color(0xFFDCE1E8),
+            ),
+          ),
+          onSelected: _setFilamentsOnTop,
+          itemBuilder: (context) => [
+            // Opción 1: Filamentos arriba, Consumibles abajo (Solo iconos)
+            PopupMenuItem(
+              value: true,
+              child: Tooltip(
+                message: 'Filamentos arriba · Consumibles abajo',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.album_outlined,
+                      size: 18,
+                      color: _filamentsOnTop ? colors.primary : colors.onSurface,
+                    ),
+                    Icon(
+                      Icons.arrow_upward_rounded,
+                      size: 14,
+                      color: _filamentsOnTop ? colors.primary : colors.onSurface,
+                    ),
+                    const SizedBox(width: 10),
+                    Icon(
+                      Icons.build_circle_outlined,
+                      size: 18,
+                      color: _filamentsOnTop
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
+                    ),
+                    Icon(
+                      Icons.arrow_downward_rounded,
+                      size: 14,
+                      color: _filamentsOnTop
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
+                    ),
+                    if (_filamentsOnTop) ...[
+                      const SizedBox(width: 16),
+                      Icon(Icons.check_rounded, size: 16, color: colors.primary),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // Opción 2: Consumibles arriba, Filamentos abajo (Solo iconos)
+            PopupMenuItem(
+              value: false,
+              child: Tooltip(
+                message: 'Consumibles arriba · Filamentos abajo',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.build_circle_outlined,
+                      size: 18,
+                      color: !_filamentsOnTop ? colors.primary : colors.onSurface,
+                    ),
+                    Icon(
+                      Icons.arrow_upward_rounded,
+                      size: 14,
+                      color: !_filamentsOnTop ? colors.primary : colors.onSurface,
+                    ),
+                    const SizedBox(width: 10),
+                    Icon(
+                      Icons.album_outlined,
+                      size: 18,
+                      color: !_filamentsOnTop
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
+                    ),
+                    Icon(
+                      Icons.arrow_downward_rounded,
+                      size: 14,
+                      color: !_filamentsOnTop
+                          ? colors.primary
+                          : colors.onSurfaceVariant,
+                    ),
+                    if (!_filamentsOnTop) ...[
+                      const SizedBox(width: 16),
+                      Icon(Icons.check_rounded, size: 16, color: colors.primary),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+          child: Container(
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: buttonDecoration,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_filamentsOnTop) ...[
+                  Icon(Icons.album_outlined, size: 16, color: colors.primary),
+                  Icon(Icons.arrow_upward_rounded, size: 13, color: colors.primary),
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.build_circle_outlined,
+                    size: 16,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  Icon(
+                    Icons.arrow_downward_rounded,
+                    size: 13,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ] else ...[
+                  Icon(
+                    Icons.build_circle_outlined,
+                    size: 16,
+                    color: colors.primary,
+                  ),
+                  Icon(Icons.arrow_upward_rounded, size: 13, color: colors.primary),
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.album_outlined,
+                    size: 16,
+                    color: colors.onSurfaceVariant,
+                  ),
+                  Icon(
+                    Icons.arrow_downward_rounded,
+                    size: 13,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ],
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.arrow_drop_down_rounded,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildOrdersTable(BuildContext context,
       {String title = 'Tabla de pedidos'}) {
     final theme = Theme.of(context);
-    final displayedOrderCount = _orders.fold<int>(
-      0,
-      (count, order) =>
-          count +
-          (order.isConsumableOnly
-              ? order.consumableRequests.length
-              : 1 + order.consumableRequests.length),
-    );
-    final rows = <DataRow>[];
+    final filamentRows = <DataRow>[];
+    final consumableRows = <DataRow>[];
     for (final order in _orders) {
       if (!order.isConsumableOnly) {
-        rows.add(_materialOrderRow(context, order));
+        filamentRows.add(_materialOrderRow(context, order));
       }
       for (var index = 0; index < order.consumableRequests.length; index++) {
-        rows.add(
+        consumableRows.add(
           _consumableOrderRow(
               context, order, order.consumableRequests[index], index),
         );
       }
     }
+
+    final rows = <DataRow>[];
+    final int displayedOrderCount;
+    switch (_tableViewFilter) {
+      case _OrderTableViewFilter.filamentsOnly:
+        rows.addAll(filamentRows);
+        displayedOrderCount = filamentRows.length;
+        break;
+      case _OrderTableViewFilter.consumablesOnly:
+        rows.addAll(consumableRows);
+        displayedOrderCount = consumableRows.length;
+        break;
+      case _OrderTableViewFilter.all:
+        displayedOrderCount = filamentRows.length + consumableRows.length;
+        final topRows = _filamentsOnTop ? filamentRows : consumableRows;
+        final bottomRows = _filamentsOnTop ? consumableRows : filamentRows;
+        rows.addAll(topRows);
+        if (topRows.isNotEmpty && bottomRows.isNotEmpty) {
+          rows.add(
+            _tupleDivisionRow(
+              context,
+              filamentsOnTop: _filamentsOnTop,
+              filamentCount: filamentRows.length,
+              consumableCount: consumableRows.length,
+            ),
+          );
+        }
+        rows.addAll(bottomRows);
+        break;
+    }
+
     return Container(
       key: const ValueKey('material_orders_list'),
       decoration: _cardDecoration(theme),
@@ -3151,6 +3549,22 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
                 ),
               ),
             )
+          else if (rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 18),
+              child: Center(
+                child: Text(
+                  _tableViewFilter == _OrderTableViewFilter.filamentsOnly
+                      ? 'No hay filamentos registrados en este filtro.'
+                      : 'No hay consumibles registrados en este filtro.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            )
           else
             LayoutBuilder(
               builder: (context, constraints) {
@@ -3211,6 +3625,102 @@ class PedidoMaterialesWidgetState extends State<PedidoMaterialesWidget> {
             ),
         ],
       ),
+    );
+  }
+
+  DataRow _tupleDivisionRow(
+    BuildContext context, {
+    required bool filamentsOnTop,
+    required int filamentCount,
+    required int consumableCount,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = theme.colorScheme.primary;
+    final topLabel =
+        filamentsOnTop ? 'Filamentos ($filamentCount)' : 'Consumibles ($consumableCount)';
+    final bottomLabel =
+        filamentsOnTop ? 'Consumibles ($consumableCount)' : 'Filamentos ($filamentCount)';
+    final lineColor = accent.withValues(alpha: isDark ? 0.55 : 0.40);
+
+    Widget dividerBar({double width = 80}) => SizedBox(
+          width: width,
+          child: Center(
+            child: Container(
+              height: 2,
+              decoration: BoxDecoration(
+                color: lineColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        );
+
+    return DataRow(
+      key: const ValueKey('orders_tuple_division_row'),
+      color: WidgetStatePropertyAll(
+        accent.withValues(alpha: isDark ? 0.14 : 0.08),
+      ),
+      cells: [
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: isDark ? 0.22 : 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: accent.withValues(alpha: isDark ? 0.45 : 0.30),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.horizontal_split_rounded, size: 14, color: accent),
+                const SizedBox(width: 6),
+                Text(
+                  '▲ $topLabel  ·  ▼ $bottomLabel',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: isDark ? Colors.white : accent,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        DataCell(dividerBar(width: 75)),
+        DataCell(dividerBar(width: 75)),
+        DataCell(dividerBar(width: 90)),
+        DataCell(
+          SizedBox(
+            width: 300,
+            child: Row(
+              children: [
+                Expanded(child: dividerBar()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    '▼ ${bottomLabel.toUpperCase()}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                      color: isDark ? Colors.white : accent,
+                    ),
+                  ),
+                ),
+                Expanded(child: dividerBar()),
+              ],
+            ),
+          ),
+        ),
+        DataCell(dividerBar(width: 120)),
+        DataCell(dividerBar(width: 70)),
+        DataCell(dividerBar(width: 120)),
+        DataCell(dividerBar(width: 70)),
+        DataCell(dividerBar(width: 110)),
+      ],
     );
   }
 
