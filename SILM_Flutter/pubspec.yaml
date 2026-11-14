@@ -1,0 +1,30 @@
+name: silm
+description: Sistema Integral de Laboratorios de Manufactura (SILM).
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  excel: ^4.0.6
+  file_selector: ^1.1.0
+  share_plus: ^13.3.0
+  shared_preferences: ^2.5.3
+  url_launcher: ^6.3.3
+  archive: ^3.6.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

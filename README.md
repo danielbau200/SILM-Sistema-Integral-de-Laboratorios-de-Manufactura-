@@ -1,6 +1,6 @@
 # SILM — Sistema Integral de Laboratorios de Manufactura
 
-Sistema integral para la gestión, costos e inventario en laboratorios de manufactura aditiva e impresión 3D (Voxelcost3D Flutter).
+Sistema integral para la gestión, costos e inventario en laboratorios de manufactura aditiva e impresión 3D (SILM Flutter).
 
 ## 🚀 Características Principales
 
@@ -21,7 +21,7 @@ Sistema integral para la gestión, costos e inventario en laboratorios de manufa
 ```text
 ├── NOTASS.txt                  # Requerimientos y notas de desarrollo
 ├── .gitignore                  # Configuración de exclusión para control de versiones
-└── Voxelcost3D_Flutter/        # Aplicación multiplataforma en Flutter
+└── SILM_Flutter/               # Aplicación multiplataforma en Flutter
     ├── lib/
     │   ├── main.dart           # Entrada principal y autenticación
     │   ├── screens.dart        # Vistas de usuario e interfaz gráfica
@@ -44,7 +44,7 @@ Sistema integral para la gestión, costos e inventario en laboratorios de manufa
 
 2. **Ejecución del proyecto**:
    ```bash
-   cd Voxelcost3D_Flutter
+   cd SILM_Flutter
    flutter pub get
    flutter run
    ```
