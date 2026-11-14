@@ -211,125 +211,139 @@ class AnalisisHeader extends StatelessWidget {
           // Título e info de periodo
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Análisis de Producción',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
-                  color: AnalyticsPalette.textPrimary,
-                  fontFamily: 'Inter',
-                  letterSpacing: -0.3,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                'Laboratorio de Manufactura · $periodLabel · $totalOrders órdenes',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AnalyticsPalette.textSecondary,
-                  fontFamily: 'Inter',
-                ),
-              ),
-            ],
-            ),
-          ),
-
-          const Spacer(),
-
-          // Controles de la derecha
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 1. Selector segmentado de ciclo
-              cicloSelector,
-
-              const SizedBox(width: 16),
-
-              // 2. Interruptor "Comparar ciclo"
-              Row(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Comparar ciclo',
+                    'Análisis de Producción',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w600,
                       color: AnalyticsPalette.textPrimary,
                       fontFamily: 'Inter',
+                      letterSpacing: -0.3,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  Transform.scale(
-                    scale: 0.82,
-                    child: Switch(
-                      value: compareWithPrevious,
-                      activeThumbColor: AnalyticsPalette.accent,
-                      activeTrackColor: AnalyticsPalette.accent.withValues(alpha: 0.35),
-                      inactiveThumbColor: AnalyticsPalette.isDark ? const Color(0xFFA1A1AA) : Colors.white,
-                      inactiveTrackColor: AnalyticsPalette.track,
-                      onChanged: onCompareChanged,
+                  const SizedBox(height: 3),
+                  Text(
+                    'Laboratorio de Manufactura · $periodLabel · $totalOrders órdenes',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AnalyticsPalette.textSecondary,
+                      fontFamily: 'Inter',
                     ),
                   ),
                 ],
               ),
-
-              const SizedBox(width: 12),
-
-              // 3. Botón "Buscar ⌘F"
-              OutlinedButton.icon(
-                onPressed: onSearch,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  side: BorderSide(color: AnalyticsPalette.border, width: 1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  foregroundColor: AnalyticsPalette.textPrimary,
-                ),
-                icon: Icon(Icons.search_rounded,
-                    size: 15, color: AnalyticsPalette.textSecondary),
-                label: const Text(
-                  'Buscar ⌘F',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ),
-
-              const SizedBox(width: 8),
-
-              // 4. Botón "Exportar"
-              OutlinedButton(
-                onPressed: onExport,
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 36),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  side: BorderSide(color: AnalyticsPalette.border, width: 1),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  foregroundColor: AnalyticsPalette.textPrimary,
-                ),
-                child: const Text(
-                  'Exportar',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    fontFamily: 'Inter',
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
+
+          const SizedBox(width: 16),
+
+          // Controles de la derecha (Wrap evita overflow en ventanas medianas/pequeñas)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Align(
+                alignment: Alignment.topRight,
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    // 1. Selector segmentado de ciclo
+                    cicloSelector,
+
+                    // 2. Interruptor "Comparar ciclo"
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Comparar ciclo',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: AnalyticsPalette.textPrimary,
+                            fontFamily: 'Inter',
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Transform.scale(
+                          scale: 0.82,
+                          child: Switch(
+                            value: compareWithPrevious,
+                            activeThumbColor: AnalyticsPalette.accent,
+                            activeTrackColor:
+                                AnalyticsPalette.accent.withValues(alpha: 0.35),
+                            inactiveThumbColor: AnalyticsPalette.isDark
+                                ? const Color(0xFFA1A1AA)
+                                : Colors.white,
+                            inactiveTrackColor: AnalyticsPalette.track,
+                            onChanged: onCompareChanged,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // 3. Botón "Buscar ⌘F"
+                    OutlinedButton.icon(
+                      onPressed: onSearch,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        side: BorderSide(
+                            color: AnalyticsPalette.border, width: 1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        foregroundColor: AnalyticsPalette.textPrimary,
+                      ),
+                      icon: Icon(Icons.search_rounded,
+                          size: 15, color: AnalyticsPalette.textSecondary),
+                      label: const Text(
+                        'Buscar ⌘F',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ),
+
+                    // 4. Botón "Exportar"
+                    OutlinedButton(
+                      onPressed: onExport,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        side: BorderSide(
+                            color: AnalyticsPalette.border, width: 1),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        foregroundColor: AnalyticsPalette.textPrimary,
+                      ),
+                      child: const Text(
+                        'Exportar',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          fontFamily: 'Inter',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
           if (SilmWindowControls.isCustomFrameSupported) ...[
             const SizedBox(width: 12),
